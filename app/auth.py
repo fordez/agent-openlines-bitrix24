@@ -23,8 +23,12 @@ async def get_http_client() -> httpx.AsyncClient:
 
 
 def get_env_var(var_name):
-    load_dotenv(override=True)
-    return os.getenv(var_name)
+    """Obtiene una variable de entorno, limpiando posibles comillas de Docker."""
+    val = os.getenv(var_name)
+    if val:
+        # Docker env_file carga valores literales incluyendo comillas si existen
+        return val.strip("'\"")
+    return val
 
 
 def update_env_file(key, value):

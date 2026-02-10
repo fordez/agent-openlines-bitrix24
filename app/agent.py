@@ -1,6 +1,6 @@
 """
 Módulo principal del agente AI.
-Coordina la gestión de sesiones, la interacción con el LLM y la ejecución del observador.
+Coordina la gestión de sesiones, la interacción con el LLM.
 """
 import asyncio
 import traceback
@@ -9,14 +9,18 @@ from app.sessions import (
     get_chat_lock, get_session, set_session, 
     create_new_session, cleanup_expired_sessions, remove_session
 )
-from app.observer import run_observer_agent
+from app.bitrix import send_typing_indicator
 
-async def get_response(user_message: str, chat_id: str) -> str:
+async def get_response(user_message: str, chat_id: str, access_token: str = None, client_endpoint: str = None) -> str:
     """
     Envía un mensaje al agente AI y retorna la respuesta.
     Reutiliza sesiones existentes para mantener contexto multi-turno nativo.
     Usa lock por chat_id: conversaciones diferentes NO se bloquean entre sí.
     """
+    # Activar typing indicator
+    if access_token and client_endpoint:
+        asyncio.create_task(send_typing_indicator(access_token, client_endpoint, chat_id, "on"))
+
     # Limpiar sesiones expiradas periódicamente (no bloquea otros chats)
     asyncio.create_task(_safe_cleanup())
 
@@ -44,16 +48,23 @@ async def get_response(user_message: str, chat_id: str) -> str:
             await add_message(chat_id, "user", user_message)
 
             # 2. Enviar al LLM (contexto multi-turno nativo de mcp-agent)
-            result = await session.llm.generate_str(message=user_message)
-
-            # Fallback si retorna vacío
-            ai_response = result or "Lo siento, no pude generar una respuesta."
+            # Usamos generate() para tener más control si generate_str falla con tools
+            response = await session.llm.generate(message=user_message)
+            
+            # Extraer texto de la respuesta de forma segura
+            ai_response = ""
+            for content in response:
+                if hasattr(content, 'parts') and content.parts:
+                    for part in content.parts:
+                        if hasattr(part, 'text') and part.text:
+                            ai_response += part.text
 
             # 3. Guardar respuesta del bot en memoria persistente
             await add_message(chat_id, "assistant", ai_response)
 
-            # 4. Lanzar Observador en Paralelo (Fire and forget)
-            asyncio.create_task(run_observer_agent(chat_id, user_message, ai_response))
+            # Desactivar typing indicator
+            if access_token and client_endpoint:
+                asyncio.create_task(send_typing_indicator(access_token, client_endpoint, chat_id, "off"))
 
             return ai_response
 

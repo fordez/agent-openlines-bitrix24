@@ -1,22 +1,17 @@
-# Python
+.venv/
+venv/
 __pycache__/
 *.pyc
 *.pyo
-.venv/
-venv/
-
-# Secrets
+.git/
+.gitignore
 .env
 mcp_agent.secrets.yaml
-
-# Logs
+testing/
 logs/
 *.log
 *.jsonl
-
-# IDE
+conversation_history.json
+README.md
 .vscode/
 .idea/
-
-# Data
-conversation_history.json

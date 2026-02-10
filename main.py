@@ -106,7 +106,7 @@ async def handle_message(data: dict):
 
     # Consultar Gemini (async, no bloquea otros requests)
     print("  🤖 Consultando Gemini...")
-    ai_response = await agent.get_response(message, dialog_id)
+    ai_response = await agent.get_response(message, dialog_id, access_token=access_token, client_endpoint=client_endpoint)
     print(f"  💡 Respuesta: {ai_response[:100]}...")
 
     # Responder en Bitrix (async)

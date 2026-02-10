@@ -73,3 +73,21 @@ async def send_reply(access_token: str, client_endpoint: str, dialog_id: str, me
                 print(f"  ⚠️ Error al enviar respuesta: {result}")
     except Exception as e:
         print(f"  ❌ Error HTTP al enviar respuesta: {e}")
+
+async def send_typing_indicator(access_token: str, client_endpoint: str, dialog_id: str, status: str = "on"):
+    """
+    Indica que el bot está escribiendo (on) o ha terminado (off).
+    """
+    url = f"{client_endpoint}imbot.chat.answer.typing"
+    payload = {
+        "BOT_ID": BOT_ID,
+        "DIALOG_ID": dialog_id,
+        "STATUS": status.upper(),
+        "auth": access_token,
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.post(url, json=payload)
+    except Exception as e:
+        print(f"  ⚠️ Error al enviar typing indicator ({status}): {e}")

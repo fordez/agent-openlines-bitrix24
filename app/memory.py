@@ -1,56 +1,38 @@
 """
-Módulo de memoria persistente (JSON) con I/O asíncrono.
-Guarda los últimos N mensajes por chat_id sin bloquear el event loop.
+Módulo de memoria persistente usando Redis.
+Guarda los últimos N mensajes por chat_id con TTL automático.
 """
 import json
-import os
-import asyncio
-import aiofiles
 from typing import List, Dict
+from app.redis_client import get_redis
 
-MEMORY_FILE = "conversation_history.json"
 MAX_HISTORY = 10
-
-_memory_lock = asyncio.Lock()
-
-
-async def load_all_history() -> Dict[str, List[dict]]:
-    if not os.path.exists(MEMORY_FILE):
-        return {}
-    try:
-        async with aiofiles.open(MEMORY_FILE, "r", encoding="utf-8") as f:
-            content = await f.read()
-            return json.loads(content) if content.strip() else {}
-    except Exception:
-        return {}
+HISTORY_TTL = 60 * 60 * 24 * 7  # 7 días
 
 
-async def save_all_history(history: Dict[str, List[dict]]):
-    async with aiofiles.open(MEMORY_FILE, "w", encoding="utf-8") as f:
-        await f.write(json.dumps(history, ensure_ascii=False, indent=2))
+def _key(chat_id: str) -> str:
+    """Genera la clave Redis para un chat."""
+    return f"chat:{chat_id}:history"
 
 
 async def get_chat_history(chat_id: str) -> List[dict]:
     """Retorna la lista de mensajes (role, content) para un chat."""
-    data = await load_all_history()
-    return data.get(str(chat_id), [])
+    r = await get_redis()
+    messages = await r.lrange(_key(chat_id), 0, -1)
+    return [json.loads(m) for m in messages]
 
 
 async def add_message(chat_id: str, role: str, content: str):
     """Guarda un mensaje y mantiene el límite de historial."""
-    async with _memory_lock:
-        chat_id = str(chat_id)
-        data = await load_all_history()
+    r = await get_redis()
+    key = _key(chat_id)
+    msg = json.dumps({"role": role, "content": content}, ensure_ascii=False)
 
-        if chat_id not in data:
-            data[chat_id] = []
-
-        data[chat_id].append({"role": role, "content": content})
-
-        if len(data[chat_id]) > MAX_HISTORY:
-            data[chat_id] = data[chat_id][-MAX_HISTORY:]
-
-        await save_all_history(data)
+    pipe = r.pipeline()
+    pipe.rpush(key, msg)
+    pipe.ltrim(key, -MAX_HISTORY, -1)
+    pipe.expire(key, HISTORY_TTL)
+    await pipe.execute()
 
 
 async def format_history_str(chat_id: str) -> str:
@@ -69,8 +51,8 @@ async def format_history_str(chat_id: str) -> str:
 
 async def get_seed_messages(chat_id: str, max_messages: int = 6) -> list:
     """
-    Retorna los últimos N mensajes formateados como lista de dicts
-    para sembrar una nueva sesión de agente después de expiración TTL.
+    Retorna los últimos N mensajes para sembrar una nueva sesión
+    de agente después de expiración TTL.
     """
     history = await get_chat_history(chat_id)
     if not history:
