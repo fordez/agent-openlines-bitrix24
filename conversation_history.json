@@ -1,0 +1,44 @@
+{
+  "chat5070": [
+    {
+      "role": "assistant",
+      "content": "Ok Jaime. Aquí tienes 3 opciones para agendar una cita:\n1. 2024-07-03 10:00:00\n2. 2024-07-03 11:00:00\n3. 2024-07-03 12:00:00\n\n¿Prefieres que la cita sea virtual (Microsoft Teams) o presencial?"
+    },
+    {
+      "role": "user",
+      "content": "1 esta bien"
+    },
+    {
+      "role": "user",
+      "content": "hola"
+    },
+    {
+      "role": "assistant",
+      "content": "Hola, ¿cómo puedo ayudarte hoy? ¿Te gustaría agendar una cita con uno de nuestros asesores?\n"
+    },
+    {
+      "role": "user",
+      "content": "hola"
+    },
+    {
+      "role": "assistant",
+      "content": "Hola, ¿cómo puedo ayudarte hoy? ¿Te gustaría agendar una cita con uno de nuestros asesores?"
+    },
+    {
+      "role": "user",
+      "content": "si"
+    },
+    {
+      "role": "assistant",
+      "content": "¿Podrías proporcionarme tu nombre o número de teléfono para poder identificarte y continuar con el proceso de agendamiento de la cita?"
+    },
+    {
+      "role": "user",
+      "content": "Jaime , 3146964611"
+    },
+    {
+      "role": "assistant",
+      "content": "Lo siento, parece que hay un problema momentáneo con la consulta de disponibilidad. Voy a crear una actividad para que uno de nuestros asesores te contacte y finalice el proceso de agendamiento."
+    }
+  ]
+}

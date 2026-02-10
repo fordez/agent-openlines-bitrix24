@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Secrets
+.env
+mcp_agent.secrets.yaml
+
+# Logs
+logs/
+*.log
+*.jsonl
+
+# IDE
+.vscode/
+.idea/

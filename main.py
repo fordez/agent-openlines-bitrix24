@@ -1,0 +1,110 @@
+"""
+Bot Viajes — Webhook de Bitrix24 con agente AI (Gemini via mcp-agent).
+Punto de entrada principal del servidor FastAPI.
+"""
+from fastapi import FastAPI, Request
+import uvicorn
+
+from app.bitrix import BOT_ID, extract_event_data, send_reply
+from app import gemini_agent
+
+server = FastAPI(title="Bot Viajes", version="1.0.0")
+
+
+@server.post("/")
+async def bitrix_webhook(request: Request):
+    """
+    Endpoint para recibir eventos de Bitrix24.
+    Procesa mensajes con Gemini y responde al usuario.
+    """
+    # Leer datos del evento
+    try:
+        form_data = await request.form()
+        data = dict(form_data)
+        event = data.get("event")
+    except Exception:
+        data = {}
+        event = None
+
+    # Fallback: body raw
+    if not data:
+        try:
+            body = await request.body()
+            body_str = body.decode("utf-8")
+            if body_str:
+                import urllib.parse
+                parsed = urllib.parse.parse_qs(body_str)
+                data = {k: v[0] for k, v in parsed.items()}
+                event = data.get("event")
+        except Exception as e:
+            print(f"Error parsing body: {e}")
+
+    print(f"\n----- EVENTO BITRIX24: {event or 'DESCONOCIDO'} -----")
+
+    if event == "ONIMBOTMESSAGEADD":
+        await handle_message(data)
+
+    elif event == "ONIMBOTJOINCHAT":
+        await handle_join(data)
+
+    else:
+        print(f"  ℹ️ Evento no procesado: {event}")
+
+    print("------------------------------------\n")
+    return {"status": "ok"}
+
+
+async def handle_message(data: dict):
+    """Procesa un mensaje entrante: consulta Gemini y responde."""
+    extracted = extract_event_data(data)
+
+    dialog_id = extracted.get("DIALOG_ID")
+    chat_id = extracted.get("CHAT_ID")
+    message = extracted.get("MESSAGE")
+    from_user_id = extracted.get("FROM_USER_ID")
+    user_name = extracted.get("USER_NAME", "Desconocido")
+    access_token = extracted.get("BOT_access_token")
+    client_endpoint = extracted.get("BOT_client_endpoint")
+
+    # Ignorar mensajes del propio bot
+    if from_user_id == BOT_ID:
+        print("  ⏭️ Mensaje del propio bot, ignorando.")
+        return
+
+    print(f"  💬 De: {user_name} (ID: {from_user_id})")
+    print(f"  📝 Mensaje: {message}")
+    print(f"  🆔 Dialog: {dialog_id}")
+
+    if not dialog_id or not message:
+        print("  ⚠️ Faltan DIALOG_ID o MESSAGE en el evento.")
+        return
+
+    if not access_token or not client_endpoint:
+        print("  ⚠️ Faltan credenciales en el evento para responder.")
+        return
+
+    # Consultar Gemini
+    print("  🤖 Consultando Gemini...")
+    ai_response = await gemini_agent.get_response(message, dialog_id)
+    print(f"  💡 Respuesta: {ai_response[:100]}...")
+
+    # Responder en Bitrix
+    send_reply(access_token, client_endpoint, dialog_id, ai_response, chat_id=chat_id)
+
+
+async def handle_join(data: dict):
+    """Envía mensaje de bienvenida cuando el bot se une al chat."""
+    extracted = extract_event_data(data)
+    dialog_id = extracted.get("DIALOG_ID")
+    access_token = extracted.get("BOT_access_token")
+    client_endpoint = extracted.get("BOT_client_endpoint")
+
+    print(f"  🤝 Bot se unió al chat: {dialog_id}")
+
+    if dialog_id and access_token and client_endpoint:
+        welcome = "¡Hola! 👋 Soy Bot Viajes, tu asistente virtual. ¿En qué puedo ayudarte hoy?"
+        send_reply(access_token, client_endpoint, dialog_id, welcome)
+
+
+if __name__ == "__main__":
+    uvicorn.run(server, host="0.0.0.0", port=8080)
