@@ -5,20 +5,15 @@ from app.auth import call_bitrix_method
 
 def qualify_lead(entity_id: str, intention: str, score: int, next_action: str) -> str:
     """
-    Registra la calificación del lead/contacto. 
-    Guarda la intención, score y siguiente acción como un comentario en el timeline del contacto.
-    
+    Usa esta tool para REGISTRAR la calificación de un Lead/Contacto (Intención, Score, Siguiente paso).
+    El LLM debe inferir estos valores del chat y luego llamar a esta tool para guardarlos.
+
     Args:
-        entity_id: ID del contacto.
-        intention: Intención detectada (ej: "Compra", "Soporte", "Información").
-        score: Puntaje cualitativo o numérico (1-100).
-        next_action: Recomendación de siguiente paso.
-        
-    Returns:
-        str: Resultado de la operación.
+        entity_id: ID del contacto/lead.
+        intention: "Compra", "Duda", "Queja".
+        score: 1-100.
+        next_action: Qué hacer después.
     """
-    if not entity_id:
-        return "Falta entity_id"
 
     comment = (
         f"🤖 **Calificación de Agente AI**\n"

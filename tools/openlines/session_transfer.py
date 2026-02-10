@@ -1,0 +1,37 @@
+"""
+Herramienta para transferir una sesión de Open Lines a un operador o cola.
+Usa el método: imopenlines.bot.session.transfer
+"""
+from app.auth import call_bitrix_method
+
+
+def session_transfer(chat_id: str, user_id: str = "", queue_id: str = "") -> str:
+    """
+    Usa esta tool para TRANSFERIR la conversación a un HUMANO cuando la situación se complique o el cliente pida hablar con alguien.
+    
+    Args:
+        chat_id: ID del chat.
+        user_id: ID del agente humano (Opcional, si no se da se enviará a cola).
+        queue_id: ID de la cola/línea abierta destino (Opcional, si no se da se enviará a un agente específico).
+    """
+    if not chat_id:
+        return "Error: chat_id es requerido."
+    if not user_id and not queue_id:
+        return "Error: Se requiere user_id o queue_id para transferir."
+
+    params = {"CHAT_ID": chat_id}
+    if user_id:
+        params["USER_ID"] = user_id
+    if queue_id:
+        params["QUEUE_ID"] = queue_id
+
+    try:
+        result = call_bitrix_method("imopenlines.bot.session.transfer", params)
+        if result.get("result"):
+            dest = f"operador {user_id}" if user_id else f"cola {queue_id}"
+            return f"Sesión del chat {chat_id} transferida exitosamente a {dest}."
+        else:
+            error = result.get("error_description", result)
+            return f"Error al transferir sesión: {error}"
+    except Exception as e:
+        return f"Error al transferir sesión: {e}"

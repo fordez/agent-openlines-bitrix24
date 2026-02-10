@@ -1,0 +1,32 @@
+"""
+Tool to change the deal pipeline stage.
+"""
+from app.auth import call_bitrix_method
+
+def deal_move_stage(deal_id: str, stage_id: str) -> str:
+    """
+    Cambiar la etapa del pipeline del deal (ej. negociación, propuesta, seguimiento).
+    Endpoint: crm.deal.update
+    
+    Args:
+        deal_id: ID del deal.
+        stage_id: ID de la etapa destino (ej: "NEW", "PREPARATION", "won", "lose").
+                  Consultar nombres exactos en Bitrix.
+                  
+    Returns:
+        str: Mensaje de éxito o error.
+    """
+    if not deal_id or not stage_id:
+        return "Error: Faltan argumentos (deal_id, stage_id)"
+
+    try:
+        call_bitrix_method("crm.deal.update", {
+            "id": deal_id,
+            "fields": {
+                "STAGE_ID": stage_id
+            }
+        })
+        return f"Deal {deal_id} movido a la etapa {stage_id}."
+        
+    except Exception as e:
+        return f"Error moviendo etapa del deal {deal_id}: {e}"

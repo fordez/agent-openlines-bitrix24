@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 import uvicorn
 
 from app.bitrix import BOT_ID, extract_event_data, send_reply
-from app import gemini_agent
+from app import agent
 
 server = FastAPI(title="Bot Viajes", version="1.0.0")
 
@@ -85,7 +85,7 @@ async def handle_message(data: dict):
 
     # Consultar Gemini
     print("  🤖 Consultando Gemini...")
-    ai_response = await gemini_agent.get_response(message, dialog_id)
+    ai_response = await agent.get_response(message, dialog_id)
     print(f"  💡 Respuesta: {ai_response[:100]}...")
 
     # Responder en Bitrix

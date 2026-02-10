@@ -40,5 +40,15 @@
       "role": "assistant",
       "content": "Lo siento, parece que hay un problema momentáneo con la consulta de disponibilidad. Voy a crear una actividad para que uno de nuestros asesores te contacte y finalice el proceso de agendamiento."
     }
+  ],
+  "chat5074": [
+    {
+      "role": "user",
+      "content": "hola"
+    },
+    {
+      "role": "assistant",
+      "content": "¡Hola! ¿En qué puedo ayudarte hoy? ¿Te gustaría agendar una cita con nosotros?"
+    }
   ]
 }

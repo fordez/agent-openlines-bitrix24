@@ -10,10 +10,9 @@ import importlib
 sys.path.append(os.getcwd())
 
 modules_to_check = [
-    "app.gemini_agent",
+    "app.agent",
     "app.auth",
     "app.bitrix",
-    "tools.crm.resolve_identity",
     "tools.crm.enrich_identity",
     "tools.crm.qualify_lead",
     "tools.deal.get_or_create_deal",
