@@ -3,7 +3,7 @@ Tool to list products in a category.
 """
 from app.auth import call_bitrix_method
 
-def catalog_product_list(section_id: int) -> str:
+async def catalog_product_list(section_id: int) -> str:
     """
     Usa esta tool para LISTAR PRODUCTOS dentro de una categoría/sección.
     
@@ -14,7 +14,7 @@ def catalog_product_list(section_id: int) -> str:
         return "Error: Falta section_id"
 
     try:
-        result = call_bitrix_method("crm.product.list", {
+        result = await call_bitrix_method("crm.product.list", {
             "order": {"NAME": "ASC"},
             "filter": {"SECTION_ID": section_id},
             "select": ["ID", "NAME", "PRICE", "CURRENCY_ID"]

@@ -5,7 +5,7 @@ Usa el método: imopenlines.bot.session.message.send
 from app.auth import call_bitrix_method
 
 
-def session_send_message(chat_id: int, message: str) -> str:
+async def session_send_message(chat_id: int, message: str) -> str:
     """
     Usa esta tool para ENVIAR MENSAJES al cliente por el canal abierto (WhatsApp/Web).
     Úsalo para responder preguntas o confirmar acciones.
@@ -30,7 +30,7 @@ def session_send_message(chat_id: int, message: str) -> str:
         params["NAME"] = name
 
     try:
-        result = call_bitrix_method("imopenlines.bot.session.message.send", params)
+        result = await call_bitrix_method("imopenlines.bot.session.message.send", params)
         if result.get("result"):
             return f"Mensaje enviado exitosamente en chat {chat_id}."
         else:

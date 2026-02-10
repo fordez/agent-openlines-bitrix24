@@ -3,7 +3,7 @@ Tool to create a folder in Bitrix24 Drive.
 """
 from app.auth import call_bitrix_method
 
-def drive_folder_create(parent_folder_id: int, name: str) -> str:
+async def drive_folder_create(parent_folder_id: int, name: str) -> str:
     """
     Usa esta tool para crear una carpeta NUEVA, por ejemplo para organizar documentos de un Cliente o Deal.
     
@@ -15,7 +15,7 @@ def drive_folder_create(parent_folder_id: int, name: str) -> str:
         return "Error: Faltan argumentos (parent_folder_id, name)"
 
     try:
-        result = call_bitrix_method("disk.folder.addsubfolder", {
+        result = await call_bitrix_method("disk.folder.addsubfolder", {
             "id": parent_folder_id,
             "data": {"NAME": name}
         })

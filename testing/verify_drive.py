@@ -7,7 +7,7 @@ import base64
 from dotenv import load_dotenv
 
 # Add project root to path
-sys.path.append(os.getcwd())
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 load_dotenv()
 
 from tools.drive.drive_folder_list import drive_folder_list

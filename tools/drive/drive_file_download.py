@@ -3,7 +3,7 @@ Tool to get download link for a file.
 """
 from app.auth import call_bitrix_method
 
-def drive_file_download(file_id: int) -> str:
+async def drive_file_download(file_id: int) -> str:
     """
     Usa esta tool para obtner el LINK de descarga de un archivo para enviárselo al usuario.
     
@@ -14,7 +14,7 @@ def drive_file_download(file_id: int) -> str:
         return "Error: Falta file_id"
 
     try:
-        result = call_bitrix_method("disk.file.get", {
+        result = await call_bitrix_method("disk.file.get", {
             "id": file_id
         })
         file_info = result.get("result", {})

@@ -4,7 +4,7 @@ Tool to schedule next action for lead by agent.
 from app.auth import call_bitrix_method
 from datetime import datetime, timedelta
 
-def lead_next_action_client(lead_id: int, description: str, deadline_mins: int = 60) -> str:
+async def lead_next_action_client(lead_id: int, description: str, deadline_mins: int = 60) -> str:
     """
     Usa esta tool para SUGERIR qué debe hacer el agente humano a continuación con este Lead.
     Ejemplos: "Llamar cliente", "Enviar brochure". Se registra como nota en el timeline.
@@ -21,7 +21,7 @@ def lead_next_action_client(lead_id: int, description: str, deadline_mins: int =
         # Fallback to timeline comment
         full_comment = f"📅 **ACCIÓN SUGERIDA (Lead)**\nDescripción: {description}\nDeadline sugerido: {deadline_mins} min"
         
-        result = call_bitrix_method("crm.timeline.comment.add", {
+        result = await call_bitrix_method("crm.timeline.comment.add", {
             "fields": {
                 "ENTITY_ID": lead_id,
                 "ENTITY_TYPE": "lead",

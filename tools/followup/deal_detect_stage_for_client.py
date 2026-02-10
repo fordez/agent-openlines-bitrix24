@@ -3,7 +3,7 @@ Tool to detect deal stage for client updates.
 """
 from app.auth import call_bitrix_method
 
-def deal_detect_stage_for_client(deal_id: int) -> str:
+async def deal_detect_stage_for_client(deal_id: int) -> str:
     """
     Usa esta tool cuando el cliente pregunte "¿Cómo va mi proceso?" o necesites saber en qué etapa está el negocio.
     Retorna la etapa actual del Deal para informar al cliente.
@@ -15,7 +15,7 @@ def deal_detect_stage_for_client(deal_id: int) -> str:
         return "Error: Falta deal_id"
 
     try:
-        result = call_bitrix_method("crm.deal.get", {"id": deal_id})
+        result = await call_bitrix_method("crm.deal.get", {"id": deal_id})
         deal = result.get("result", {})
         
         if not deal:

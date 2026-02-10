@@ -3,7 +3,7 @@ Tool to generate documents from templates.
 """
 from app.auth import call_bitrix_method
 
-def document_generate(template_id: int, entity_id: int, entity_type_id: int = 2) -> str:
+async def document_generate(template_id: int, entity_id: int, entity_type_id: int = 2) -> str:
     """
     Usa esta tool para GENERAR un documento (ej: PDF de Cotización) usando una plantilla.
     
@@ -17,7 +17,7 @@ def document_generate(template_id: int, entity_id: int, entity_type_id: int = 2)
 
     try:
         # values={} can be passed to override fields, but usually we rely on CRM data
-        result = call_bitrix_method("crm.documentgenerator.document.add", {
+        result = await call_bitrix_method("crm.documentgenerator.document.add", {
             "templateId": template_id,
             "entityTypeId": entity_type_id,
             "entityId": entity_id

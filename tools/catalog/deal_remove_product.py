@@ -3,7 +3,7 @@ Tool to remove product row from a deal.
 """
 from app.auth import call_bitrix_method
 
-def deal_remove_product(row_id: int) -> str:
+async def deal_remove_product(row_id: int) -> str:
     """
     Eliminar un producto/fila de un Deal existente.
     Endpoint: crm.productrow.delete
@@ -18,7 +18,7 @@ def deal_remove_product(row_id: int) -> str:
         return "Error: Falta row_id"
 
     try:
-        result = call_bitrix_method("crm.productrow.delete", {"id": row_id})
+        result = await call_bitrix_method("crm.productrow.delete", {"id": row_id})
         
         if result.get("result"):
              return f"Fila de producto {row_id} eliminada exitosamente."

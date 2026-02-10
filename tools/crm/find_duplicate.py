@@ -6,7 +6,7 @@ from app.auth import call_bitrix_method
 import json
 
 
-def find_duplicate(phone: str = None, email: str = None) -> str:
+async def find_duplicate(phone: str = None, email: str = None) -> str:
     """
     Usa esta tool para EVITAR DUPLICADOS verificando si ya existe un Lead/Contacto con ese teléfono/email.
     Usa esto antes de crear un Lead nuevo.
@@ -22,7 +22,7 @@ def find_duplicate(phone: str = None, email: str = None) -> str:
         return "Error: comm_type debe ser 'PHONE' o 'EMAIL'."
 
     try:
-        result = call_bitrix_method("crm.duplicate.findbycomm", {
+        result = await call_bitrix_method("crm.duplicate.findbycomm", {
             "type": comm_type,
             "values": [value.strip()],
             "entity_type": entity_type.upper()

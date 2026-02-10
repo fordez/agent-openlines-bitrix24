@@ -3,7 +3,7 @@ Tool to update product rows in a deal.
 """
 from app.auth import call_bitrix_method
 
-def deal_update_products(row_id: int, fields: dict) -> str:
+async def deal_update_products(row_id: int, fields: dict) -> str:
     """
     Modificar un producto/fila específica en un Deal existente (cantidad, precio, etc).
     Endpoint: crm.productrow.update
@@ -20,7 +20,7 @@ def deal_update_products(row_id: int, fields: dict) -> str:
 
     try:
         # crm.productrow.update
-        result = call_bitrix_method("crm.productrow.update", {
+        result = await call_bitrix_method("crm.productrow.update", {
             "id": row_id,
             "fields": fields
         })

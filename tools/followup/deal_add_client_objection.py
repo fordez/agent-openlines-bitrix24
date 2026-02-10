@@ -3,7 +3,7 @@ Tool to add client objection to deal.
 """
 from app.auth import call_bitrix_method
 
-def deal_add_client_objection(deal_id: int, objection: str) -> str:
+async def deal_add_client_objection(deal_id: int, objection: str) -> str:
     """
     Usa esta tool cuando el cliente exprese una queja, duda o motivo para no comprar (ej: "Es muy caro").
     Registra la objeción en el Deal para análisis futuro.
@@ -25,7 +25,7 @@ def deal_add_client_objection(deal_id: int, objection: str) -> str:
         # But if strict on "crm.deal.update", let's try to fetch and append.
         
         # Method 1: Append to COMMENTS (Risk: concurrency)
-        # get_res = call_bitrix_method("crm.deal.get", {"id": deal_id})
+        # get_res = await call_bitrix_method("crm.deal.get", {"id": deal_id})
         # old_comments = get_res.get("result", {}).get("COMMENTS", "")
         # new_comments = old_comments + "\n[Objeción Cliente]: " + objection
         # ... update ...
@@ -35,13 +35,13 @@ def deal_add_client_objection(deal_id: int, objection: str) -> str:
         # "crm.deal.update (campo COMMENTS ...)" implies modifying the field.
         # I will use "crm.deal.update" appending the text.
         
-        get_res = call_bitrix_method("crm.deal.get", {"id": deal_id})
+        get_res = await call_bitrix_method("crm.deal.get", {"id": deal_id})
         old_comments = get_res.get("result", {}).get("COMMENTS") or ""
         
         # HTML line break for bitrix comments field is usually <br> or \n
         new_comments = old_comments + f"\n[OBJECIÓN]: {objection}"
         
-        result = call_bitrix_method("crm.deal.update", {
+        result = await call_bitrix_method("crm.deal.update", {
             "id": deal_id,
             "fields": {"COMMENTS": new_comments}
         })

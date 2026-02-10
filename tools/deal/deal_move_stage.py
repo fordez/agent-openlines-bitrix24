@@ -3,7 +3,7 @@ Tool to change the deal pipeline stage.
 """
 from app.auth import call_bitrix_method
 
-def deal_move_stage(deal_id: str, stage_id: str) -> str:
+async def deal_move_stage(deal_id: str, stage_id: str) -> str:
     """
     Cambiar la etapa del pipeline del deal (ej. negociación, propuesta, seguimiento).
     Endpoint: crm.deal.update
@@ -20,7 +20,7 @@ def deal_move_stage(deal_id: str, stage_id: str) -> str:
         return "Error: Faltan argumentos (deal_id, stage_id)"
 
     try:
-        call_bitrix_method("crm.deal.update", {
+        await call_bitrix_method("crm.deal.update", {
             "id": deal_id,
             "fields": {
                 "STAGE_ID": stage_id

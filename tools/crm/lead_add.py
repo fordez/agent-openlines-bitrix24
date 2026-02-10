@@ -6,7 +6,7 @@ from app.auth import call_bitrix_method
 import json
 
 
-def lead_add(title: str, name: str = None, last_name: str = None, phone: str = None, email: str = None,
+async def lead_add(title: str, name: str = None, last_name: str = None, phone: str = None, email: str = None,
              source_id: str = "WEB", comments: str = None, assigned_by_id: str = None) -> str:
     """
     Usa esta tool para CREAR un nuevo Lead cuando identifiques un cliente potencial nuevo que no existe.
@@ -43,7 +43,7 @@ def lead_add(title: str, name: str = None, last_name: str = None, phone: str = N
         fields["ASSIGNED_BY_ID"] = assigned_by_id
 
     try:
-        result = call_bitrix_method("crm.lead.add", {"fields": fields})
+        result = await call_bitrix_method("crm.lead.add", {"fields": fields})
         lead_id = result.get("result")
         if lead_id:
             return f"Lead creado exitosamente con ID: {lead_id}."

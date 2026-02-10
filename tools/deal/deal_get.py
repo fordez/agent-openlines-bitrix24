@@ -3,7 +3,7 @@ Tool to get full information of a deal by ID.
 """
 from app.auth import call_bitrix_method
 
-def deal_get(deal_id: str) -> str:
+async def deal_get(deal_id: str) -> str:
     """
     Obtener información completa de un deal por ID.
     Endpoint: crm.deal.get
@@ -18,7 +18,7 @@ def deal_get(deal_id: str) -> str:
         return "Error: Falta deal_id"
 
     try:
-        result = call_bitrix_method("crm.deal.get", {"id": deal_id})
+        result = await call_bitrix_method("crm.deal.get", {"id": deal_id})
         deal = result.get("result")
         
         if not deal:

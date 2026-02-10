@@ -4,7 +4,7 @@ Herramienta para enriquecer datos de contacto en Bitrix24.
 from app.auth import call_bitrix_method
 import json
 
-def enrich_identity(name: str = None, phone: str = None, email: str = None) -> str:
+async def enrich_identity(name: str = None, phone: str = None, email: str = None) -> str:
     """
     Usa esta tool al INICIO para buscar si el contacto ya existe en la base de datos (Leads/Contactos).
     Ayuda a retomar conversaciones pasadas.
@@ -42,7 +42,7 @@ def enrich_identity(name: str = None, phone: str = None, email: str = None) -> s
             bitrix_fields[k_upper] = v
             
     try:
-        call_bitrix_method("crm.contact.update", {
+        await call_bitrix_method("crm.contact.update", {
             "id": entity_id,
             "fields": bitrix_fields
         })

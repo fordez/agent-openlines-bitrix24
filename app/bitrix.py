@@ -1,7 +1,8 @@
 """
 Módulo de utilidades para Bitrix24: parseo de eventos y envío de respuestas.
+Usa httpx async para no bloquear el event loop.
 """
-import requests as http_requests
+import httpx
 
 
 BOT_ID = "3242"
@@ -47,9 +48,9 @@ def extract_event_data(data: dict) -> dict:
     return result
 
 
-def send_reply(access_token: str, client_endpoint: str, dialog_id: str, message: str, chat_id: str = None):
+async def send_reply(access_token: str, client_endpoint: str, dialog_id: str, message: str, chat_id: str = None):
     """
-    Envía un mensaje de respuesta al chat de Bitrix24 usando el token del evento.
+    Envía un mensaje de respuesta al chat de Bitrix24 de forma asíncrona.
     """
     url = f"{client_endpoint}imbot.message.add"
     payload = {
@@ -58,17 +59,17 @@ def send_reply(access_token: str, client_endpoint: str, dialog_id: str, message:
         "MESSAGE": message,
         "auth": access_token,
     }
-    
-    # Para canales abiertos (LINES), CHAT_ID ayuda a marcar como contestado
+
     if chat_id:
         payload["CHAT_ID"] = chat_id
 
     try:
-        response = http_requests.post(url, json=payload)
-        result = response.json()
-        if "result" in result:
-            print(f"  ✅ Respuesta enviada al chat {dialog_id} (msg_id: {result['result']})")
-        else:
-            print(f"  ⚠️ Error al enviar respuesta: {result}")
+        async with httpx.AsyncClient(timeout=15) as client:
+            response = await client.post(url, json=payload)
+            result = response.json()
+            if "result" in result:
+                print(f"  ✅ Respuesta enviada al chat {dialog_id} (msg_id: {result['result']})")
+            else:
+                print(f"  ⚠️ Error al enviar respuesta: {result}")
     except Exception as e:
         print(f"  ❌ Error HTTP al enviar respuesta: {e}")

@@ -4,7 +4,7 @@ Tool to create new calendar events.
 from app.auth import call_bitrix_method
 from datetime import datetime, timedelta
 
-def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "") -> str:
+async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "") -> str:
     """
     Usa esta tool para AGENDAR una cita/reunión en el calendario del agente.
     Útil cuando el cliente confirma disponibilidad.
@@ -48,7 +48,7 @@ def calendar_event_create(title: str, start_time: str, end_time: str, descriptio
         fields["attendees"] = attendees
 
     try:
-        result = call_bitrix_method("calendar.event.add", fields)
+        result = await call_bitrix_method("calendar.event.add", fields)
         return f"Evento creado exitosamente. ID: {result.get('result')}"
         
     except Exception as e:

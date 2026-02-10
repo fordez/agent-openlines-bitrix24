@@ -3,7 +3,7 @@ Tool to set reminders for calendar events.
 """
 from app.auth import call_bitrix_method
 
-def calendar_event_set_reminder(event_id: str, minutes: int = 60, owner_id: int = 1) -> str:
+async def calendar_event_set_reminder(event_id: str, minutes: int = 60, owner_id: int = 1) -> str:
     """
     Configurar recordatorios automáticos para los asistentes del evento.
     Endpoint: calendar.event.update (campo REMIND)
@@ -25,7 +25,7 @@ def calendar_event_set_reminder(event_id: str, minutes: int = 60, owner_id: int 
     remind = [{"type": "min", "count": minutes}]
 
     try:
-        result = call_bitrix_method("calendar.event.update", {
+        result = await call_bitrix_method("calendar.event.update", {
             "id": event_id,
             "type": "user",
             "ownerId": owner_id,

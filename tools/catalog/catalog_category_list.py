@@ -3,7 +3,7 @@ Tool to list categories in a catalog.
 """
 from app.auth import call_bitrix_method
 
-def catalog_category_list(catalog_id: int) -> str:
+async def catalog_category_list(catalog_id: int) -> str:
     """
     Usa esta tool para ver las CATEGORÍAS (Secciones) dentro de un catálogo específico.
     
@@ -15,7 +15,7 @@ def catalog_category_list(catalog_id: int) -> str:
 
     try:
         # Usamos crm.productsection.list que es más común para CRM
-        result = call_bitrix_method("crm.productsection.list", {
+        result = await call_bitrix_method("crm.productsection.list", {
             "order": {"NAME": "ASC"},
             "filter": {"CATALOG_ID": catalog_id}
         })

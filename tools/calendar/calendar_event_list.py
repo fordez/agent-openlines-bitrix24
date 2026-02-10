@@ -4,7 +4,7 @@ Tool to list calendar events to avoid conflicts.
 from app.auth import call_bitrix_method
 from datetime import datetime, timedelta
 
-def calendar_event_list(from_date: str = None, to_date: str = None) -> str:
+async def calendar_event_list(from_date: str = None, to_date: str = None) -> str:
     """
     Usa esta tool para LEER LA AGENDA y saber qué reuniones hay programadas en un rango.
     Si no das fechas, toma los próximos 7 días.
@@ -29,7 +29,7 @@ def calendar_event_list(from_date: str = None, to_date: str = None) -> str:
 
     try:
         # Changed to calendar.event.get as .list might be invalid/deprecated
-        result = call_bitrix_method("calendar.event.get", params)
+        result = await call_bitrix_method("calendar.event.get", params)
         events = result.get("result", [])
         
         if not events:

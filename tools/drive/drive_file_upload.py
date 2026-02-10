@@ -3,7 +3,7 @@ Tool to upload files to Bitrix24 Drive.
 """
 from app.auth import call_bitrix_method
 
-def drive_file_upload(folder_id: int, name: str, content_base64: str) -> str:
+async def drive_file_upload(folder_id: int, name: str, content_base64: str) -> str:
     """
     Usa esta tool para SUBIR un archivo generado (PDF, cotización) a una carpeta del Drive.
     
@@ -16,7 +16,7 @@ def drive_file_upload(folder_id: int, name: str, content_base64: str) -> str:
         return "Error: Faltan argumentos (folder_id, name, content_base64)"
 
     try:
-        result = call_bitrix_method("disk.folder.uploadfile", {
+        result = await call_bitrix_method("disk.folder.uploadfile", {
             "id": folder_id,
             "data": {"NAME": name},
             "fileContent": content_base64

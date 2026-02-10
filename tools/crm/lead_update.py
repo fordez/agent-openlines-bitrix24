@@ -6,7 +6,7 @@ from app.auth import call_bitrix_method
 import json
 
 
-def lead_update(lead_id: int, fields: dict) -> str:
+async def lead_update(lead_id: int, fields: dict) -> str:
     """
     Usa esta tool para ACTUALIZAR datos de un Lead existente (ej: agregar teléfono, corregir nombre).
     
@@ -38,7 +38,7 @@ def lead_update(lead_id: int, fields: dict) -> str:
             bitrix_fields[k_upper] = v
 
     try:
-        result = call_bitrix_method("crm.lead.update", {
+        result = await call_bitrix_method("crm.lead.update", {
             "id": lead_id,
             "fields": bitrix_fields
         })

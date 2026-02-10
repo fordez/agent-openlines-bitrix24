@@ -3,7 +3,7 @@ Tool to add products to a deal.
 """
 from app.auth import call_bitrix_method
 
-def deal_add_products(deal_id: int, products: list[dict]) -> str:
+async def deal_add_products(deal_id: int, products: list[dict]) -> str:
     """
     Usa esta tool para AGREGAR productos seleccionados al Deal (Cotización).
     
@@ -34,7 +34,7 @@ def deal_add_products(deal_id: int, products: list[dict]) -> str:
         try:
             # crm.productrow.add (legacy but standard for deals) or crm.item.productrow.add (new item based)
             # Para Deals estándar, crm.productrow.add es lo usual.
-            result = call_bitrix_method("crm.productrow.add", {"fields": fields})
+            result = await call_bitrix_method("crm.productrow.add", {"fields": fields})
             output += f"- Producto {p.get('product_id')} agregado (Row ID: {result.get('result')})\n"
         except Exception as e:
             output += f"- Error agregando producto {p.get('product_id')}: {e}\n"

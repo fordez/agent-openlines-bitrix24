@@ -4,7 +4,7 @@ Tool to update/reschedule calendar events.
 from app.auth import call_bitrix_method
 from datetime import datetime, timedelta
 
-def calendar_event_update(event_id: int, title: str = None, description: str = None) -> str:
+async def calendar_event_update(event_id: int, title: str = None, description: str = None) -> str:
     """
     Usa esta tool para MODIFICAR una reunión existente (ej: cambiar título o notas).
     
@@ -38,7 +38,7 @@ def calendar_event_update(event_id: int, title: str = None, description: str = N
                 pass # If format fails, maybe user provided just date?
     
     try:
-        result = call_bitrix_method("calendar.event.update", fields)
+        result = await call_bitrix_method("calendar.event.update", fields)
         return f"Evento {event_id} actualizado exitosamente: {result.get('result')}"
     except Exception as e:
         return f"Error actualizando evento: {e}"

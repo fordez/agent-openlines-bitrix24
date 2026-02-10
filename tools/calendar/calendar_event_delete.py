@@ -3,7 +3,7 @@ Tool to delete/cancel calendar events.
 """
 from app.auth import call_bitrix_method
 
-def calendar_event_delete(event_id: int) -> str:
+async def calendar_event_delete(event_id: int) -> str:
     """
     Usa esta tool para CANCELAR/BORRAR una reunión.
     
@@ -14,7 +14,7 @@ def calendar_event_delete(event_id: int) -> str:
         return "Error: Falta event_id"
 
     try:
-        result = call_bitrix_method("calendar.event.delete", {"id": event_id})
+        result = await call_bitrix_method("calendar.event.delete", {"id": event_id})
         res = result.get("result")
         if res:
              return f"Evento {event_id} eliminado exitosamente."

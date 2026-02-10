@@ -5,7 +5,7 @@ Usa crm.lead.update y luego crea Contacto/Deal manualmente.
 from app.auth import call_bitrix_method
 import json
 
-def lead_convert(lead_id: int, deal_category_id: int = 0) -> str:
+async def lead_convert(lead_id: int, deal_category_id: int = 0) -> str:
     """
     Usa esta tool para CONVERTIR un Lead en Deal + Contacto cuando el cliente muestra interés real de compra.
     
@@ -18,7 +18,7 @@ def lead_convert(lead_id: int, deal_category_id: int = 0) -> str:
 
     try:
         # 1. Obtener datos del Lead
-        lead_data = call_bitrix_method("crm.lead.get", {"id": lead_id})
+        lead_data = await call_bitrix_method("crm.lead.get", {"id": lead_id})
         lead = lead_data.get("result")
         if not lead:
             return f"Error: no se encontró el Lead {lead_id}."
@@ -41,7 +41,7 @@ def lead_convert(lead_id: int, deal_category_id: int = 0) -> str:
         if lead.get("ASSIGNED_BY_ID"):
             contact_fields["ASSIGNED_BY_ID"] = lead["ASSIGNED_BY_ID"]
 
-        contact_result = call_bitrix_method("crm.contact.add", {"fields": contact_fields})
+        contact_result = await call_bitrix_method("crm.contact.add", {"fields": contact_fields})
         contact_id = contact_result.get("result")
         if contact_id:
             result_msg += f" Contacto: {contact_id}."
@@ -65,7 +65,7 @@ def lead_convert(lead_id: int, deal_category_id: int = 0) -> str:
         if lead.get("CURRENCY_ID"):
             deal_fields["CURRENCY_ID"] = lead["CURRENCY_ID"]
 
-        deal_result = call_bitrix_method("crm.deal.add", {"fields": deal_fields})
+        deal_result = await call_bitrix_method("crm.deal.add", {"fields": deal_fields})
         deal_id = deal_result.get("result")
         if deal_id:
             result_msg += f" Deal: {deal_id}."
@@ -74,7 +74,7 @@ def lead_convert(lead_id: int, deal_category_id: int = 0) -> str:
 
         # 4. Marcar Lead como convertido
         if contact_id or deal_id:
-            call_bitrix_method("crm.lead.update", {
+            await call_bitrix_method("crm.lead.update", {
                 "id": lead_id,
                 "fields": {"STATUS_ID": "CONVERTED"}
             })

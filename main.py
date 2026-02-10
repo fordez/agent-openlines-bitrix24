@@ -1,9 +1,11 @@
 """
 Bot Viajes — Webhook de Bitrix24 con agente AI (Gemini via mcp-agent).
 Punto de entrada principal del servidor FastAPI.
+Usa fire-and-forget para no bloquear al recibir eventos concurrentes.
 """
 from fastapi import FastAPI, Request
 import uvicorn
+import asyncio
 
 from app.bitrix import BOT_ID, extract_event_data, send_reply
 from app import agent
@@ -15,7 +17,8 @@ server = FastAPI(title="Bot Viajes", version="1.0.0")
 async def bitrix_webhook(request: Request):
     """
     Endpoint para recibir eventos de Bitrix24.
-    Procesa mensajes con Gemini y responde al usuario.
+    Responde 200 OK INMEDIATAMENTE y procesa en background.
+    Esto evita timeouts de Bitrix y permite concurrencia total.
     """
     # Leer datos del evento
     try:
@@ -41,17 +44,35 @@ async def bitrix_webhook(request: Request):
 
     print(f"\n----- EVENTO BITRIX24: {event or 'DESCONOCIDO'} -----")
 
+    # Fire-and-forget: procesar en background, responder inmediato
     if event == "ONIMBOTMESSAGEADD":
-        await handle_message(data)
+        asyncio.create_task(_safe_handle_message(data))
 
     elif event == "ONIMBOTJOINCHAT":
-        await handle_join(data)
+        asyncio.create_task(_safe_handle_join(data))
 
     else:
         print(f"  ℹ️ Evento no procesado: {event}")
 
-    print("------------------------------------\n")
     return {"status": "ok"}
+
+
+async def _safe_handle_message(data: dict):
+    """Wrapper seguro para handle_message en background."""
+    try:
+        await handle_message(data)
+    except Exception as e:
+        print(f"  ❌ Error en background handle_message: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+async def _safe_handle_join(data: dict):
+    """Wrapper seguro para handle_join en background."""
+    try:
+        await handle_join(data)
+    except Exception as e:
+        print(f"  ❌ Error en background handle_join: {e}")
 
 
 async def handle_message(data: dict):
@@ -83,13 +104,14 @@ async def handle_message(data: dict):
         print("  ⚠️ Faltan credenciales en el evento para responder.")
         return
 
-    # Consultar Gemini
+    # Consultar Gemini (async, no bloquea otros requests)
     print("  🤖 Consultando Gemini...")
     ai_response = await agent.get_response(message, dialog_id)
     print(f"  💡 Respuesta: {ai_response[:100]}...")
 
-    # Responder en Bitrix
-    send_reply(access_token, client_endpoint, dialog_id, ai_response, chat_id=chat_id)
+    # Responder en Bitrix (async)
+    await send_reply(access_token, client_endpoint, dialog_id, ai_response, chat_id=chat_id)
+    print("------------------------------------\n")
 
 
 async def handle_join(data: dict):
@@ -103,7 +125,7 @@ async def handle_join(data: dict):
 
     if dialog_id and access_token and client_endpoint:
         welcome = "¡Hola! 👋 Soy Bot Viajes, tu asistente virtual. ¿En qué puedo ayudarte hoy?"
-        send_reply(access_token, client_endpoint, dialog_id, welcome)
+        await send_reply(access_token, client_endpoint, dialog_id, welcome)
 
 
 if __name__ == "__main__":

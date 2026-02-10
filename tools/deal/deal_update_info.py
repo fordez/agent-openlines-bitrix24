@@ -4,7 +4,7 @@ Tool to update general deal information.
 from app.auth import call_bitrix_method
 import json
 
-def deal_update_info(deal_id: str, fields: dict) -> str:
+async def deal_update_info(deal_id: str, fields: dict) -> str:
     """
     Actualizar datos generales del deal: título, monto, responsable, campos personalizados.
     Endpoint: crm.deal.update
@@ -31,7 +31,7 @@ def deal_update_info(deal_id: str, fields: dict) -> str:
         # pero Bitrix lo permite. La instrucción dice "Actualizar datos generales".
         # Dejaremos que pase cualquier campo por flexibilidad.
         
-        call_bitrix_method("crm.deal.update", {
+        await call_bitrix_method("crm.deal.update", {
             "id": deal_id,
             "fields": fields
         })

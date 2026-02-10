@@ -4,7 +4,7 @@ Tool to schedule automatic follow up for date.
 from app.auth import call_bitrix_method
 from datetime import datetime, timedelta
 
-def deal_follow_up_schedule_client(deal_id: int, interaction_type: str, time_offset_hours: int = 24) -> str:
+async def deal_follow_up_schedule_client(deal_id: int, interaction_type: str, time_offset_hours: int = 24) -> str:
     """
     Usa esta tool para PROGRAMAR un seguimiento si el cliente pide "hablamos mañana" o queda pendiente algo.
     Deja una marca en el timeline para retomar contacto futuro.
@@ -21,7 +21,7 @@ def deal_follow_up_schedule_client(deal_id: int, interaction_type: str, time_off
         # Fallback to timeline comment
         full_comment = f"⏰ **SEGUIMIENTO PROGRAMADO**\nMotivo: {interaction_type}\nOffset: Dentro de {time_offset_hours}hs"
         
-        result = call_bitrix_method("crm.timeline.comment.add", {
+        result = await call_bitrix_method("crm.timeline.comment.add", {
             "fields": {
                 "ENTITY_ID": deal_id,
                 "ENTITY_TYPE": "deal",

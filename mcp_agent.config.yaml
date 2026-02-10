@@ -8,3 +8,11 @@ google:
 
 openai:
   default_model: gpt-4o
+
+mcp:
+  servers:
+    bitrix_crm:
+      transport: stdio
+      command: python
+      args:
+        - mcp_server.py

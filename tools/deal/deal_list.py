@@ -4,7 +4,7 @@ Tool to search deals by contact, stage, responsible, or custom filters.
 from app.auth import call_bitrix_method
 import json
 
-def deal_list(filter_status: str = None, limit: int = 10) -> str:
+async def deal_list(filter_status: str = None, limit: int = 10) -> str:
     """
     Usa esta tool para LISTAR Deals activos, filtrados por etapa si es necesario.
     Útil para ver qué negocios tiene abiertos un cliente.
@@ -27,7 +27,7 @@ def deal_list(filter_status: str = None, limit: int = 10) -> str:
         select = ["ID", "TITLE", "STAGE_ID", "OPPORTUNITY", "CURRENCY_ID", "CONTACT_ID", "ASSIGNED_BY_ID", "CLOSED", "DATE_CREATE"]
 
     try:
-        result = call_bitrix_method("crm.deal.list", {
+        result = await call_bitrix_method("crm.deal.list", {
             "filter": filter_params,
             "select": select,
             "order": {"DATE_CREATE": "DESC"},

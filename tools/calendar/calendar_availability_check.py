@@ -4,7 +4,7 @@ Tool to check availability of participants.
 from app.auth import call_bitrix_method
 from datetime import datetime
 
-def calendar_availability_check(start_time: str, end_time: str) -> str:
+async def calendar_availability_check(start_time: str, end_time: str) -> str:
     """
     Usa esta tool para VERIFICAR DISPONIBILIDAD antes de agendar.
     Retorna si el horario está libre u ocupado.
@@ -20,7 +20,7 @@ def calendar_availability_check(start_time: str, end_time: str) -> str:
         return "Error: Faltan argumentos (from_date, to_date, users list)"
 
     try:
-        result = call_bitrix_method("calendar.accessibility.get", {
+        result = await call_bitrix_method("calendar.accessibility.get", {
             "from": from_date,
             "to": to_date,
             "users": users

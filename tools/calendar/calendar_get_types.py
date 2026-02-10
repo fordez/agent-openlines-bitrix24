@@ -3,7 +3,7 @@ Tool to get available calendar types.
 """
 from app.auth import call_bitrix_method
 
-def calendar_get_types() -> str:
+async def calendar_get_types() -> str:
     """
     Consultar tipos de calendario disponibles (personal, grupo, recurso).
     Endpoint: calendar.type.get
@@ -12,7 +12,7 @@ def calendar_get_types() -> str:
         str: Lista de tipos de calendario o error.
     """
     try:
-        result = call_bitrix_method("calendar.type.get", {})
+        result = await call_bitrix_method("calendar.type.get", {})
         types = result.get("result", [])
         
         if not types:

@@ -4,7 +4,7 @@ Tool to create tasks for human follow-up.
 from app.auth import call_bitrix_method
 from datetime import datetime, timedelta
 
-def task_create(title: str, description: str, responsible_id: int = None, deadline_hours: int = 24) -> str:
+async def task_create(title: str, description: str, responsible_id: int = None, deadline_hours: int = 24) -> str:
     """
     Crear tareas para que humanos continúen acciones necesarias.
     Endpoint: tasks.task.add
@@ -35,7 +35,7 @@ def task_create(title: str, description: str, responsible_id: int = None, deadli
         fields["RESPONSIBLE_ID"] = responsible_id
 
     try:
-        result = call_bitrix_method("tasks.task.add", {"fields": fields})
+        result = await call_bitrix_method("tasks.task.add", {"fields": fields})
         task = result.get("result", {}).get("task", {})
         return f"Tarea creada: {task.get('id')} - {task.get('title')}"
         

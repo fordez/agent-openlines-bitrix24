@@ -3,7 +3,7 @@ Tool to search products by name.
 """
 from app.auth import call_bitrix_method
 
-def catalog_product_search(name: str) -> str:
+async def catalog_product_search(name: str) -> str:
     """
     Usa esta tool para BUSCAR productos por nombre (ej: "Madrid", "Hotel playa").
     
@@ -15,7 +15,7 @@ def catalog_product_search(name: str) -> str:
 
     try:
         # Filtro SEARCH_CONTENT suele funcionar, o %NAME%
-        result = call_bitrix_method("crm.product.list", {
+        result = await call_bitrix_method("crm.product.list", {
             "order": {"NAME": "ASC"},
             "filter": {"%NAME": query}, # Búsqueda parcial por nombre
             "select": ["ID", "NAME", "PRICE", "CURRENCY_ID", "SECTION_ID"]

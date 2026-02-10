@@ -3,7 +3,7 @@ Tool to list available product catalogs.
 """
 from app.auth import call_bitrix_method
 
-def catalog_list() -> str:
+async def catalog_list() -> str:
     """
     Usa esta tool para ver QUÉ catálogos de productos hay disponibles (ej: "Paquetes", "Vuelos").
     
@@ -11,7 +11,7 @@ def catalog_list() -> str:
         str: Lista de catálogos con sus IDs.
     """
     try:
-        result = call_bitrix_method("crm.catalog.list", {})
+        result = await call_bitrix_method("crm.catalog.list", {})
         catalogs = result.get("result", [])
         
         if not catalogs:

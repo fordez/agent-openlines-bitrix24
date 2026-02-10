@@ -3,7 +3,7 @@ Tool to list generated documents for an entity.
 """
 from app.auth import call_bitrix_method
 
-def document_list(entity_id: int, entity_type_id: int = 2) -> str:
+async def document_list(entity_id: int, entity_type_id: int = 2) -> str:
     """
     Usa esta tool para buscar documentos YA generados para un Deal/Lead específico.
     
@@ -15,7 +15,7 @@ def document_list(entity_id: int, entity_type_id: int = 2) -> str:
         return "Error: Faltan argumentos"
 
     try:
-        result = call_bitrix_method("crm.documentgenerator.document.list", {
+        result = await call_bitrix_method("crm.documentgenerator.document.list", {
             "filter": {
                 "entityId": entity_id,
                 "entityTypeId": entity_type_id

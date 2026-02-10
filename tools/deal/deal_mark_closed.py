@@ -3,7 +3,7 @@ Tool to mark the deal as closed (WON or LOST).
 """
 from app.auth import call_bitrix_method
 
-def deal_mark_closed(deal_id: str, status: str, comment: str = None) -> str:
+async def deal_mark_closed(deal_id: str, status: str, comment: str = None) -> str:
     """
     Marcar el deal como cerrado: GANADO o PERDIDO según contexto.
     Endpoint: crm.deal.update (STAGE_ID = WON / LOST)
@@ -39,7 +39,7 @@ def deal_mark_closed(deal_id: str, status: str, comment: str = None) -> str:
         if comment:
             fields["COMMENTS"] = f"Cierre ({status}): {comment}"
             
-        call_bitrix_method("crm.deal.update", {
+        await call_bitrix_method("crm.deal.update", {
             "id": deal_id,
             "fields": fields
         })
@@ -47,7 +47,7 @@ def deal_mark_closed(deal_id: str, status: str, comment: str = None) -> str:
         # Si hay comentario, también lo agregamos al timeline para que quede registro claro
         if comment:
              try:
-                call_bitrix_method("crm.timeline.comment.add", {
+                await call_bitrix_method("crm.timeline.comment.add", {
                     "fields": {
                         "ENTITY_ID": deal_id,
                         "ENTITY_TYPE": "deal",

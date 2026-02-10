@@ -5,7 +5,7 @@ Usa el método: imopenlines.bot.session.finish
 from app.auth import call_bitrix_method
 
 
-def session_finish(chat_id: str) -> str:
+async def session_finish(chat_id: str) -> str:
     """
     Finaliza/cierra la sesión del bot en un chat de Open Lines.
     Esto marca la conversación como terminada.
@@ -20,7 +20,7 @@ def session_finish(chat_id: str) -> str:
         return "Error: chat_id es requerido."
 
     try:
-        result = call_bitrix_method("imopenlines.bot.session.finish", {
+        result = await call_bitrix_method("imopenlines.bot.session.finish", {
             "CHAT_ID": chat_id,
         })
         if result.get("result"):

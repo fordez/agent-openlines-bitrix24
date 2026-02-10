@@ -3,7 +3,7 @@ Tool to get download link for a document.
 """
 from app.auth import call_bitrix_method
 
-def document_download(document_id: int) -> str:
+async def document_download(document_id: int) -> str:
     """
     Usa esta tool para obtener el LINK de descarga de un documento generado (PDF/Word).
     
@@ -14,7 +14,7 @@ def document_download(document_id: int) -> str:
         return "Error: Falta document_id"
 
     try:
-        result = call_bitrix_method("crm.documentgenerator.document.get", {"id": document_id})
+        result = await call_bitrix_method("crm.documentgenerator.document.get", {"id": document_id})
         doc = result.get("result", {})
         
         if not doc:

@@ -5,7 +5,7 @@ Usa el método: imopenlines.crm.lead.create
 from app.auth import call_bitrix_method
 
 
-def crm_chat_link(chat_id: str) -> str:
+async def crm_chat_link(chat_id: str) -> str:
     """
     Vincula una conversación de Open Lines al CRM creando un Lead automáticamente.
     Bitrix24 asocia el chat al nuevo Lead, permitiendo dar seguimiento desde el CRM.
@@ -20,7 +20,7 @@ def crm_chat_link(chat_id: str) -> str:
         return "Error: chat_id es requerido."
 
     try:
-        result = call_bitrix_method("imopenlines.crm.lead.create", {
+        result = await call_bitrix_method("imopenlines.crm.lead.create", {
             "CHAT_ID": chat_id,
         })
         if result.get("result"):

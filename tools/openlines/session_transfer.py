@@ -5,7 +5,7 @@ Usa el método: imopenlines.bot.session.transfer
 from app.auth import call_bitrix_method
 
 
-def session_transfer(chat_id: str, user_id: str = "", queue_id: str = "") -> str:
+async def session_transfer(chat_id: str, user_id: str = "", queue_id: str = "") -> str:
     """
     Usa esta tool para TRANSFERIR la conversación a un HUMANO cuando la situación se complique o el cliente pida hablar con alguien.
     
@@ -26,7 +26,7 @@ def session_transfer(chat_id: str, user_id: str = "", queue_id: str = "") -> str
         params["QUEUE_ID"] = queue_id
 
     try:
-        result = call_bitrix_method("imopenlines.bot.session.transfer", params)
+        result = await call_bitrix_method("imopenlines.bot.session.transfer", params)
         if result.get("result"):
             dest = f"operador {user_id}" if user_id else f"cola {queue_id}"
             return f"Sesión del chat {chat_id} transferida exitosamente a {dest}."

@@ -3,7 +3,7 @@ Tool to add notes or comments to the deal timeline.
 """
 from app.auth import call_bitrix_method
 
-def deal_add_note(deal_id: str, note: str) -> str:
+async def deal_add_note(deal_id: str, note: str) -> str:
     """
     Agregar notas o comentarios al timeline del deal para registrar conversaciones o acciones.
     Endpoint: crm.timeline.comment.add
@@ -19,7 +19,7 @@ def deal_add_note(deal_id: str, note: str) -> str:
         return "Error: Faltan argumentos (deal_id, note)"
 
     try:
-        call_bitrix_method("crm.timeline.comment.add", {
+        await call_bitrix_method("crm.timeline.comment.add", {
             "fields": {
                 "ENTITY_ID": deal_id,
                 "ENTITY_TYPE": "deal",

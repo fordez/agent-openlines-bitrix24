@@ -3,7 +3,7 @@ Tool to list document templates.
 """
 from app.auth import call_bitrix_method
 
-def document_template_list(entity_type_id: int = 2) -> str:
+async def document_template_list(entity_type_id: int = 2) -> str:
     """
     Usa esta tool para ver qué PLANTILLAS de documentos (cotizaciones, facturas) existen.
     
@@ -15,7 +15,7 @@ def document_template_list(entity_type_id: int = 2) -> str:
         params["filter"] = {"entityTypeId": entity_type_id}
 
     try:
-        result = call_bitrix_method("crm.documentgenerator.template.list", params)
+        result = await call_bitrix_method("crm.documentgenerator.template.list", params)
         # Debug
         # print(f"DEBUG: document_template_list result: {result}")
         

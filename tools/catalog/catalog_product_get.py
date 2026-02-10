@@ -3,7 +3,7 @@ Tool to get full product details.
 """
 from app.auth import call_bitrix_method
 
-def catalog_product_get(product_id: int) -> str:
+async def catalog_product_get(product_id: int) -> str:
     """
     Obtener detalles completos de un producto o servicio por su ID.
     Endpoint: crm.product.get
@@ -18,7 +18,7 @@ def catalog_product_get(product_id: int) -> str:
         return "Error: Falta product_id"
 
     try:
-        result = call_bitrix_method("crm.product.get", {"id": product_id})
+        result = await call_bitrix_method("crm.product.get", {"id": product_id})
         product = result.get("result")
         
         if not product:

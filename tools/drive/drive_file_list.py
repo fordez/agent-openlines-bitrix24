@@ -3,7 +3,7 @@ Tool to list files in a folder.
 """
 from app.auth import call_bitrix_method
 
-def drive_file_list(folder_id: int) -> str:
+async def drive_file_list(folder_id: int) -> str:
     """
     Usa esta tool para ver qué ARCHIVOS hay dentro de una carpeta específica.
     Útil para revisar si ya existe un documento.
@@ -15,7 +15,7 @@ def drive_file_list(folder_id: int) -> str:
         return "Error: Falta folder_id"
 
     try:
-        result = call_bitrix_method("disk.folder.getchildren", {
+        result = await call_bitrix_method("disk.folder.getchildren", {
             "id": folder_id,
             "filter": {"TYPE": "file"}
         })

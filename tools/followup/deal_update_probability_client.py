@@ -3,7 +3,7 @@ Tool to update deal probability based on client interaction.
 """
 from app.auth import call_bitrix_method
 
-def deal_update_probability_client(deal_id: int, probability: int) -> str:
+async def deal_update_probability_client(deal_id: int, probability: int) -> str:
     """
     Usa esta tool cuando la intención de compra del cliente cambie (ej: muestra mucho interés o pide descuento).
     Ajusta dinámicamente la probabilidad de éxito del negocio.
@@ -19,7 +19,7 @@ def deal_update_probability_client(deal_id: int, probability: int) -> str:
         if not (0 <= probability <= 100):
             return "Error: Probabilidad debe estar entre 0 y 100."
 
-        result = call_bitrix_method("crm.deal.update", {
+        result = await call_bitrix_method("crm.deal.update", {
             "id": deal_id,
             "fields": {"PROBABILITY": probability}
         })

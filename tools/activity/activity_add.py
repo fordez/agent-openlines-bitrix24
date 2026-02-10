@@ -3,7 +3,7 @@ Tool to add activity notes to CRM (using timeline comments for simplicity).
 """
 from app.auth import call_bitrix_method
 
-def activity_add(activity_type: str, subject: str, description: str, owner_id: str = None, owner_type_id: int = 1) -> str:
+async def activity_add(activity_type: str, subject: str, description: str, owner_id: str = None, owner_type_id: int = 1) -> str:
     """
     Registrar notas o seguimiento de la interacción en el CRM.
     Usa crm.timeline.comment.add para Leads/Deals/Contacts por ser más directo.
@@ -36,7 +36,7 @@ def activity_add(activity_type: str, subject: str, description: str, owner_id: s
 
     try:
         # Use simpler timeline comment
-        result = call_bitrix_method("crm.timeline.comment.add", {
+        result = await call_bitrix_method("crm.timeline.comment.add", {
             "fields": {
                 "ENTITY_ID": owner_id,
                 "ENTITY_TYPE": entity_type,

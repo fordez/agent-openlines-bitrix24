@@ -3,7 +3,7 @@ Tool to list folders in Bitrix24 Drive.
 """
 from app.auth import call_bitrix_method
 
-def drive_folder_list(folder_id: int = None) -> str:
+async def drive_folder_list(folder_id: int = None) -> str:
     """
     Usa esta tool para explorar carpetas en el Drive si el usuario pide ver archivos o buscar donde guardar algo.
     Si no das folder_id, muestra la raíz.
@@ -14,7 +14,7 @@ def drive_folder_list(folder_id: int = None) -> str:
     if not folder_id:
         try:
             # Get default storage
-            storage_res = call_bitrix_method("disk.storage.getlist", {})
+            storage_res = await call_bitrix_method("disk.storage.getlist", {})
             storages = storage_res.get("result", [])
             if storages:
                 # Usually first storage is Company Drive or User Drive depending on scope
@@ -27,7 +27,7 @@ def drive_folder_list(folder_id: int = None) -> str:
             return f"Error buscando almacenamiento raíz: {e}"
 
     try:
-        result = call_bitrix_method("disk.folder.getchildren", {
+        result = await call_bitrix_method("disk.folder.getchildren", {
             "id": folder_id,
             "filter": {"TYPE": "folder"} 
         })
