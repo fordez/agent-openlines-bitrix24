@@ -19,17 +19,22 @@ async def deal_add_products(deal_id: int, products: list[dict]) -> str:
     error_count = 0
 
     for p in products:
+        # Normalizar para ser resiliente a lo que envíe el LLM
+        pid = p.get("PRODUCT_ID") or p.get("product_id")
+        price = p.get("PRICE") or p.get("price")
+        qty = p.get("QUANTITY") or p.get("quantity", 1)
+        curr = p.get("CURRENCY_ID") or p.get("currency")
+
         fields = {
             "OWNER_TYPE": "D", # D = Deal
             "OWNER_ID": deal_id,
-            "PRODUCT_ID": p.get("product_id"),
-            "PRICE": p.get("price"),
-            "QUANTITY": p.get("quantity", 1)
+            "PRODUCT_ID": pid,
+            "PRICE": price,
+            "QUANTITY": qty
         }
         
-        # Opcional: currency
-        if p.get("currency"):
-            fields["CURRENCY_ID"] = p.get("currency")
+        if curr:
+            fields["CURRENCY_ID"] = curr
 
         try:
             # crm.productrow.add (legacy but standard for deals) or crm.item.productrow.add (new item based)

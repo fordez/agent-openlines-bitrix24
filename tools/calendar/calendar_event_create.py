@@ -1,55 +1,45 @@
 """
-Tool to create new calendar events.
+Tool to create new calendar events in Bitrix24.
 """
 from app.auth import call_bitrix_method
-from datetime import datetime, timedelta
+import sys
 
-async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "") -> str:
+async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "", remind_mins: int = 60) -> str:
     """
-    Usa esta tool para AGENDAR una cita/reunión en el calendario del agente.
-    Útil cuando el cliente confirma disponibilidad.
-    
-    Args:
-        str: ID del evento creado.
+    Agrega un evento al calendario.
+    Si se proporciona remind_mins, se configura un recordatorio automático.
     """
-    if not name or not from_ts:
-        return "Error: Faltan argumentos (name, from_ts)"
+    if not title or not start_time or not end_time:
+        return "Error: title, start_time y end_time son requeridos."
 
-    # Calculate to_ts if missing
-    if not to_ts:
-        try:
-            # Try parsing with time
-            dt_from = datetime.strptime(from_ts, '%Y-%m-%d %H:%M:%S')
-            dt_to = dt_from + timedelta(minutes=duration_mins)
-            to_ts = dt_to.strftime('%Y-%m-%d %H:%M:%S')
-        except ValueError:
-            # Maybe just date provided?
-            try:
-                dt_from = datetime.strptime(from_ts, '%Y-%m-%d')
-                dt_to = dt_from  # All day usually, or default logic
-                # For simplicity, if date only, assume +1 day for all day, but user usually wants appointments.
-                # Let's assume standard format required.
-                return "Error: Formato de fecha debe ser 'YYYY-MM-DD HH:MM:SS'"
-            except:
-                return "Error parsing date format."
-
-    fields = {
-        "type": "user",
-        "name": name,
-        "from": from_ts,
-        "to": to_ts,
-        "description": description,
-        "location": location,
-        "ownerId": owner_id,
-        "section": 0 # Default calendar
-    }
-    
-    if attendees:
-        fields["attendees"] = attendees
+    sys.stderr.write(f"  📅 Tool calendar_event_create: {title} ({start_time})\n")
 
     try:
+        from app.auth import get_current_user_id
+        owner_id = await get_current_user_id()
+        
+        fields = {
+            "type": "user",
+            "ownerId": owner_id,
+            "name": title,
+            "from": start_time,
+            "to": end_time,
+            "description": description,
+            "section": 0
+        }
+
+        if remind_mins:
+            fields["remind"] = [{"type": "min", "count": remind_mins}]
+    
         result = await call_bitrix_method("calendar.event.add", fields)
-        return f"Evento creado exitosamente. ID: {result.get('result')}"
+        event_id = result.get("result")
+        
+        if event_id:
+            return f"Evento '{title}' agendado exitosamente. ID: {event_id}. Recordatorio: {remind_mins} min."
+        else:
+            error = result.get("error_description", result)
+            return f"Error de Bitrix al crear evento: {error}"
         
     except Exception as e:
-        return f"Error creando evento: {e}"
+        sys.stderr.write(f"  ❌ Error en calendar_event_create: {e}\n")
+        return f"Error técnico: {e}"

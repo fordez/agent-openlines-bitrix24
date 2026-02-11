@@ -1,0 +1,56 @@
+# MAPA DE PARÁMETROS MCP — BITRIX24 BOT
+
+Este documento detalla los requerimientos técnicos de las 49 herramientas para garantizar la trazabilidad y el correcto funcionamiento con mcp-agent.
+
+## 🔑 Parámetros de Trazabilidad Global
+Estos valores deben persistir en el contexto de la sesión para vincular cada acción a un cliente y un agente específico.
+
+- **chat_id**: ID de la conversación en OpenLines. Vincula el chat con Leads/Deals.
+- **session_id**: ID de la sesión técnica de Bitrix24. Necesario para actualizar perfiles de visitantes.
+- **responsible_id**: ID del usuario humano en Bitrix24. Se usa para asignar tareas y deals.
+- **access_token / domain**: Anclas de autenticación (generalmente manejadas por el backend).
+
+---
+
+## 🏗️ Parámetros FÍSOS (Database/System Driven)
+Valores que deben traerse de la configuración de Bitrix24 o definirse por entorno.
+
+| Categoría | Parámetro | Ejemplo | Origen Sugerido |
+| :--- | :--- | :--- | :--- |
+| **CRM** | `deal_category_id` | `0` (General) | bitrix://crm/stages |
+| **CRM** | `source_id` | `WEB`, `CHAT` | bitrix://crm/fields/LEAD |
+| **Documentos**| `template_id` | `12` (Cotización) | bitrix://documents/templates |
+| **Documentos**| `entity_type_id`| `1` (Lead), `2` (Deal) | Hardcoded/Enum |
+| **Calendario** | `remind_mins` | `60` | Configurada/Default |
+| **Drive** | `folder_id` | `1045` (Root) | bitrix://drive/folders |
+| **Catálogo** | `catalog_id` | `24` | bitrix://catalogs |
+| **Catálogo** | `section_id` | `150` | bitrix://catalog/sections |
+| **Deals** | `stage_id` | `C1:NEW` | bitrix://crm/stages/DEAL |
+
+---
+
+## ⚡ Parámetros DINÁMICOS (Context Driven)
+Valores que la IA genera o extrae de la charla con el usuario.
+
+- **title / name / last_name**: Información del prospecto.
+- **phone / email**: Datos de contacto (requieren validación de duplicados).
+- **message / comment / description**: Contenido de notas y tareas.
+- **start_time / end_time**: Fechas de agenda (Formato ISO: YYYY-MM-DDTHH:MM:SS).
+- **fields (dict)**: Paquete de campos para actualizaciones masivas.
+- **products (list[dict])**: Carrito de compras (`[{'product_id': 1, 'quantity': 2}]`).
+
+---
+
+## 🚀 Sugerencia de Implementación con mcp-agent
+
+Para una arquitectura de "Talla Mundial" usando **mcp-agent**, se recomienda:
+
+1. **Inyección de Contexto**: Pasa `chat_id` y `responsible_id` como `extra_context` al inicializar el agente.
+2. **Uso de Recursos**: Entrena al agente para que SIEMPRE consulte los recursos `bitrix://...` antes de usar una herramienta que requiera un ID fijo (ej: buscar el `template_id` antes de generar un documento).
+3. **Traceability Wrapper**: Asegura que el `mcp_server.py` loguee siempre el `chat_id` en cada llamada para que en los logs de Bitrix24 se pueda rastrear qué IA hizo cada cambio.
+4. **Validación de Tipos**: Usa los tipos de datos estrictos (int, str, dict) definidos en las herramientas para evitar errores de API.
+
+---
+**Relación de Trazabilidad**:
+`CHAT_ID` <---> `LEAD_ID/DEAL_ID` <---> `RESPONSIBLE_ID`
+*(La base de la pirámide es el CHAT_ID, que es lo primero que se obtiene del webhook).*

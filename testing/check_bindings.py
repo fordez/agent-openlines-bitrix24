@@ -1,15 +1,16 @@
 import json
 from dotenv import load_dotenv
-import auth
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app import auth
+import asyncio
 
-# Cargar variables de entorno
-load_dotenv()
-
-def check_bindings():
+async def check_bindings():
     print("Obteniendo lista de eventos vinculados (event.get)...")
     
     try:
-        result = auth.call_bitrix_method("event.get")
+        result = await auth.call_bitrix_method("event.get")
         
         if "result" in result:
             events = result["result"]
@@ -23,4 +24,4 @@ def check_bindings():
         print(f"Error al obtener eventos: {e}")
 
 if __name__ == "__main__":
-    check_bindings()
+    asyncio.run(check_bindings())

@@ -17,15 +17,15 @@ async def catalog_product_search(name: str) -> str:
         # Filtro SEARCH_CONTENT suele funcionar, o %NAME%
         result = await call_bitrix_method("crm.product.list", {
             "order": {"NAME": "ASC"},
-            "filter": {"%NAME": query}, # Búsqueda parcial por nombre
+            "filter": {"%NAME": name}, # Búsqueda parcial por nombre
             "select": ["ID", "NAME", "PRICE", "CURRENCY_ID", "SECTION_ID"]
         })
         products = result.get("result", [])
         
         if not products:
-            return f"No se encontraron productos coincidiendo con '{query}'."
+            return f"No se encontraron productos coincidiendo con '{name}'."
             
-        output = f"Resultados búsqueda '{query}':\n"
+        output = f"Resultados búsqueda '{name}':\n"
         for p in products:
             output += f"- ID: {p.get('ID')} | {p.get('NAME')} | Precio: {p.get('PRICE')} {p.get('CURRENCY_ID')} (Cat: {p.get('SECTION_ID')})\n"
             

@@ -1,12 +1,17 @@
 import os
 from dotenv import load_dotenv
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from app import auth
 
 load_dotenv()
 
 WEBHOOK_HANDLER_URL = os.getenv("WEBHOOK_HANDLER_URL")
 
-def bind_event():
+import asyncio
+
+async def bind_event():
     if not WEBHOOK_HANDLER_URL:
         print("WEBHOOK_HANDLER_URL no definido en .env")
         return
@@ -21,10 +26,10 @@ def bind_event():
     }
     
     try:
-        result = auth.call_bitrix_method("event.bind", payload)
+        result = await auth.call_bitrix_method("event.bind", payload)
         print(f"Resultado event.bind: {result}")
     except Exception as e:
         print(f"Error en event.bind: {e}")
 
 if __name__ == "__main__":
-    bind_event()
+    asyncio.run(bind_event())

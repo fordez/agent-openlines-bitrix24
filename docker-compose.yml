@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   redis:
     image: redis:7-alpine
@@ -21,12 +23,13 @@ services:
     env_file: .env
     environment:
       REDIS_URL: redis://redis:6379/0
+      LLM_PROVIDER: ${LLM_PROVIDER:-google}
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
     volumes:
-      - ./mcp_agent.config.yaml:/app/mcp_agent.config.yaml
-      - ./mcp_agent.secrets.yaml:/app/mcp_agent.secrets.yaml
+      - .:/app
+      - /app/node_modules
+      - /app/.venv
 
 volumes:
   redis_data:

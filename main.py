@@ -13,6 +13,14 @@ from app import agent
 server = FastAPI(title="Bot Viajes", version="1.0.0")
 
 
+@server.on_event("startup")
+async def startup():
+    """Inicializa el TokenManager con credenciales de .env al arrancar."""
+    from app.token_manager import get_token_manager
+    token_manager = await get_token_manager()
+    print("🚀 TokenManager inicializado - Tokens cargados desde .env")
+
+
 @server.post("/")
 async def bitrix_webhook(request: Request):
     """
@@ -78,14 +86,17 @@ async def _safe_handle_join(data: dict):
 async def handle_message(data: dict):
     """Procesa un mensaje entrante: consulta Gemini y responde."""
     extracted = extract_event_data(data)
+    print(f"  🔍 Extracted: {extracted}")
 
     dialog_id = extracted.get("DIALOG_ID")
     chat_id = extracted.get("CHAT_ID")
     message = extracted.get("MESSAGE")
     from_user_id = extracted.get("FROM_USER_ID")
     user_name = extracted.get("USER_NAME", "Desconocido")
-    access_token = extracted.get("BOT_access_token")
+    # Token del EVENTO para responder a Bitrix (no para tools)
+    event_token = extracted.get("BOT_access_token")
     client_endpoint = extracted.get("BOT_client_endpoint")
+    session_id = extracted.get("SESSION_ID")
 
     # Ignorar mensajes del propio bot
     if from_user_id == BOT_ID:
@@ -100,17 +111,32 @@ async def handle_message(data: dict):
         print("  ⚠️ Faltan DIALOG_ID o MESSAGE en el evento.")
         return
 
-    if not access_token or not client_endpoint:
-        print("  ⚠️ Faltan credenciales en el evento para responder.")
-        return
+    # Guardar dominio (las tools usan TokenManager, no este token)
+    import os
+    if client_endpoint:
+        domain = client_endpoint.replace("https://", "").split("/")[0]
+        os.environ["BITRIX_DOMAIN"] = domain
+        os.environ["BITRIX_CLIENT_ENDPOINT"] = client_endpoint
 
-    # Consultar Gemini (async, no bloquea otros requests)
-    print("  🤖 Consultando Gemini...")
-    ai_response = await agent.get_response(message, dialog_id, access_token=access_token, client_endpoint=client_endpoint)
+    # Consultar LLM (tools usan TokenManager internamente)
+    provider = os.getenv("LLM_PROVIDER", "unknown")
+    print(f"  🤖 Consultando AI ({provider})...")
+    ai_response = await agent.get_response(
+        message, 
+        dialog_id, 
+        # Tools NO necesitan token (usan TokenManager)
+        # Typing indicator SÍ necesita token del evento
+        event_token=event_token,
+        client_endpoint=client_endpoint, 
+        session_id=session_id,
+        chat_id_num=chat_id,  # CORREGIDO: Usar el nombre de argumento correcto
+        user_name=user_name,
+        user_id=from_user_id
+    )
     print(f"  💡 Respuesta: {ai_response[:100]}...")
 
-    # Responder en Bitrix (async)
-    await send_reply(access_token, client_endpoint, dialog_id, ai_response, chat_id=chat_id)
+    # Responder a Bitrix (USA token del evento, no TokenManager)
+    await send_reply(event_token, client_endpoint, dialog_id, ai_response, chat_id=chat_id, session_id=session_id)
     print("------------------------------------\n")
 
 
@@ -124,7 +150,7 @@ async def handle_join(data: dict):
     print(f"  🤝 Bot se unió al chat: {dialog_id}")
 
     if dialog_id and access_token and client_endpoint:
-        welcome = "¡Hola! 👋 Soy Bot Viajes, tu asistente virtual. ¿En qué puedo ayudarte hoy?"
+        welcome = "¡Hola! 👋 Soy Bot Viajes (ID: 3040), tu asistente virtual. ¿En qué puedo ayudarte hoy?"
         await send_reply(access_token, client_endpoint, dialog_id, welcome)
 
 

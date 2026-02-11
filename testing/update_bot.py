@@ -1,4 +1,5 @@
 import os
+import asyncio
 from dotenv import load_dotenv
 import sys
 import os
@@ -12,7 +13,7 @@ BOT_CODE = os.getenv("BOT_CODE", "bot_viajes")
 BOT_NAME = os.getenv("BOT_NAME", "Bot Viajes")
 WEBHOOK_HANDLER_URL = os.getenv("WEBHOOK_HANDLER_URL")
 
-def update_bot():
+async def update_bot():
     if not WEBHOOK_HANDLER_URL or "tu-url-ngrok" in WEBHOOK_HANDLER_URL:
         print("ERROR: Por favor configura WEBHOOK_HANDLER_URL en el archivo .env")
         return
@@ -20,7 +21,7 @@ def update_bot():
     # Obtener ID del bot primero
     print(f"Buscando bot '{BOT_CODE}'...")
     try:
-        bots_result = auth.call_bitrix_method("imbot.bot.list")
+        bots_result = await auth.call_bitrix_method("imbot.bot.list")
         bot_id = None
         
         if "result" in bots_result:
@@ -47,7 +48,7 @@ def update_bot():
             }
         }
 
-        result = auth.call_bitrix_method("imbot.update", payload)
+        result = await auth.call_bitrix_method("imbot.update", payload)
         
         if "result" in result and result["result"]:
             print("¡Bot actualizado exitosamente!")
@@ -59,4 +60,4 @@ def update_bot():
         print(f"Error al actualizar el bot: {e}")
 
 if __name__ == "__main__":
-    update_bot()
+    asyncio.run(update_bot())

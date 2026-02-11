@@ -1,44 +1,42 @@
 """
 Tool to update/reschedule calendar events.
 """
-from app.auth import call_bitrix_method
-from datetime import datetime, timedelta
+from app.auth import call_bitrix_method, get_current_user_id
+import sys
 
-async def calendar_event_update(event_id: int, title: str = None, description: str = None) -> str:
+async def calendar_event_update(event_id: int, title: str = None, start_time: str = None, end_time: str = None, description: str = None, remind_mins: int = None) -> str:
     """
-    Usa esta tool para MODIFICAR una reunión existente (ej: cambiar título o notas).
-    
-    Args:
-        event_id: ID del evento.
-        str: Resultado de la actualización.
+    Modifica una reunión existente. Permite repromgramar o cambiar detalles.
     """
     if not event_id:
-        return "Error: Falta event_id"
+        return "Error: event_id es requerido."
 
-    fields = {
-        "id": event_id,
-        "ownerId": owner_id,
-        "type": "user"
-    }
-    
-    if name: fields["name"] = name
-    if description: fields["description"] = description
-    
-    # Handle rescheduling
-    if from_ts:
-        fields["from"] = from_ts
-        if to_ts:
-            fields["to"] = to_ts
-        elif duration_mins:
-            try:
-                dt_from = datetime.strptime(from_ts, '%Y-%m-%d %H:%M:%S')
-                dt_to = dt_from + timedelta(minutes=duration_mins)
-                fields["to"] = dt_to.strftime('%Y-%m-%d %H:%M:%S')
-            except:
-                pass # If format fails, maybe user provided just date?
-    
+    sys.stderr.write(f"  📅 Tool calendar_event_update: ID {event_id}\n")
+
     try:
+        owner_id = await get_current_user_id()
+        
+        fields = {
+            "id": event_id,
+            "ownerId": owner_id,
+            "type": "user"
+        }
+        
+        if title: fields["name"] = title
+        if start_time: fields["from"] = start_time
+        if end_time: fields["to"] = end_time
+        if description: fields["description"] = description
+        if remind_mins is not None:
+            fields["remind"] = [{"type": "min", "count": remind_mins}]
+        
         result = await call_bitrix_method("calendar.event.update", fields)
-        return f"Evento {event_id} actualizado exitosamente: {result.get('result')}"
+        
+        if result.get("result"):
+            return f"Evento {event_id} actualizado exitosamente."
+        else:
+            error = result.get("error_description", result)
+            return f"Error al actualizar evento: {error}"
+
     except Exception as e:
-        return f"Error actualizando evento: {e}"
+        sys.stderr.write(f"  ❌ Error en calendar_event_update: {e}\n")
+        return f"Error técnico: {e}"

@@ -11,15 +11,14 @@ from app.sessions import (
 )
 from app.bitrix import send_typing_indicator
 
-async def get_response(user_message: str, chat_id: str, access_token: str = None, client_endpoint: str = None) -> str:
+async def get_response(user_message: str, chat_id: str, event_token: str = None, client_endpoint: str = None, session_id: int = None, user_name: str = None, user_id: str = None, chat_id_num: int = None) -> str:
     """
     Envía un mensaje al agente AI y retorna la respuesta.
-    Reutiliza sesiones existentes para mantener contexto multi-turno nativo.
-    Usa lock por chat_id: conversaciones diferentes NO se bloquean entre sí.
+    Recibe chat_id (dialog_id) y opcionalmente chat_id_num (el ID numérico para tools).
     """
-    # Activar typing indicator
-    if access_token and client_endpoint:
-        asyncio.create_task(send_typing_indicator(access_token, client_endpoint, chat_id, "on"))
+    # Typing indicator usa token del EVENTO (para que Bitrix sepa quién escribe)
+    if event_token and client_endpoint:
+        asyncio.create_task(send_typing_indicator(event_token, client_endpoint, chat_id, "on"))
 
     # Limpiar sesiones expiradas periódicamente (no bloquea otros chats)
     asyncio.create_task(_safe_cleanup())
@@ -45,26 +44,88 @@ async def get_response(user_message: str, chat_id: str, access_token: str = None
 
         try:
             # 1. Guardar mensaje del usuario en memoria persistente
-            await add_message(chat_id, "user", user_message)
+            # Incluimos info de contexto para el Agente AI (Usamos nombres inequívocos)
+            context_list = []
+            if session_id: context_list.append(f"BITRIX_SESSION_ID={session_id}")
+            if chat_id_num: context_list.append(f"BITRIX_CHAT_ID={chat_id_num}")
+            if user_name: context_list.append(f"USER_NAME={user_name}")
+            if user_id: context_list.append(f"USER_ID={user_id}")
+            if client_endpoint: context_list.append(f"client_endpoint={client_endpoint}")
+            context_list.append(f"DIALOG_ID={chat_id}")
+            
+            from datetime import datetime
+            now_str = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            context_prefix = (
+                f"[FECHA Y HORA ACTUAL: {now_str}]\n"
+                f"[CONTEXTO ACTUAL: {', '.join(context_list)}]\n\n"
+                "⚠️ NOTA: El `BITRIX_CHAT_ID` numérico es el que debes usar para herramientas del CRM.\n"
+                "⚠️ NOTA: IMPORTANTE - Al llamar a `lead_add`, DEBES incluir el Nombre y el Teléfono recolectados como argumentos explicitamente.\n"
+                "⚠️ NOTA: NO necesitas pasar `access_token` a las herramientas.\n"
+            )
+            
+            await add_message(chat_id, "user", f"{context_prefix}{user_message}")
 
             # 2. Enviar al LLM (contexto multi-turno nativo de mcp-agent)
-            # Usamos generate() para tener más control si generate_str falla con tools
+            print(f"  📤 Enviando a LLM: {user_message[:50]}...")
             response = await session.llm.generate(message=user_message)
-            
+            print(f"  📥 Respuesta raw LLM type: {type(response)}")
+
             # Extraer texto de la respuesta de forma segura
             ai_response = ""
-            for content in response:
-                if hasattr(content, 'parts') and content.parts:
-                    for part in content.parts:
-                        if hasattr(part, 'text') and part.text:
-                            ai_response += part.text
+            try:
+                # Debug deep inspection
+                if isinstance(response, list):
+                    for i, content in enumerate(response):
+                        print(f"    Item {i}: type={type(content)}")
+                        if hasattr(content, 'parts'):
+                            print(f"      Parts: {content.parts}")
+                        if hasattr(content, 'role'):
+                            print(f"      Role: {content.role}")
+                        if hasattr(content, 'content'):
+                            print(f"      Content: {content.content}")
+
+                # Standard extraction
+                for content in response:
+                    # Case 1: Google/Vertex style (has parts)
+                    if hasattr(content, 'parts') and content.parts:
+                        for part in content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                ai_response += part.text
+                            elif isinstance(part, str):
+                                ai_response += part
+                    
+                    # Case 2: OpenAI style (ChatCompletionMessage with .content)
+                    elif hasattr(content, 'content') and content.content:
+                        ai_response += content.content
+                    
+                    
+                    # Case 4: Tool call result (no content)
+                    elif hasattr(content, 'content') and content.content is None:
+                        pass
+
+                    else:
+                        print(f"      ⚠️ Unknown content type: {type(content)}")
+
+                if not ai_response and hasattr(response, 'text'):
+                     # Fallback for some LLM wrappers
+                     ai_response = response.text
+
+            except Exception as e:
+                print(f"  ❌ Error parsing response: {e}")
+                traceback.print_exc()
+
+            print(f"  💡 AI Response final: '{ai_response}'")
 
             # 3. Guardar respuesta del bot en memoria persistente
-            await add_message(chat_id, "assistant", ai_response)
+            if ai_response:
+                await add_message(chat_id, "assistant", ai_response)
+            else:
+                 print("  ⚠️ AI Response is empty!")
 
             # Desactivar typing indicator
-            if access_token and client_endpoint:
-                asyncio.create_task(send_typing_indicator(access_token, client_endpoint, chat_id, "off"))
+            if event_token and client_endpoint:
+                asyncio.create_task(send_typing_indicator(event_token, client_endpoint, chat_id, "off"))
 
             return ai_response
 

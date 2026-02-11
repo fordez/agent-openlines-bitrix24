@@ -1,16 +1,21 @@
 import json
 from dotenv import load_dotenv
-import auth
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from app import auth
 
 # Cargar variables de entorno
 load_dotenv()
 
-def get_bot_info():
+import asyncio
+
+async def get_bot_info():
     print("Obteniendo lista de bots registrados...")
     
     try:
         # Llamamos a imbot.bot.list para ver todos los bots registrados por esta app
-        result = auth.call_bitrix_method("imbot.bot.list")
+        result = await auth.call_bitrix_method("imbot.bot.list")
         
         if "result" in result:
             bots = result["result"]
@@ -44,4 +49,4 @@ def get_bot_info():
         print(f"Error al obtener información del bot: {e}")
 
 if __name__ == "__main__":
-    get_bot_info()
+    asyncio.run(get_bot_info())
