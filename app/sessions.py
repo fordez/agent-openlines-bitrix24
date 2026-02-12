@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from app.context import app, MCP_SERVER_NAME
+from app.context import app, MCP_SERVER_NAME, TRAVEL_SERVER_NAME
 from app.prompts import SYSTEM_PROMPT
 from app.memory import format_history_str
 from app.redis_client import get_redis
@@ -88,7 +88,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
     travel_agent = Agent(
         name=f"travel_assistant_{chat_id}",
         instruction=instruction,
-        server_names=[MCP_SERVER_NAME],
+        server_names=[MCP_SERVER_NAME, TRAVEL_SERVER_NAME],
     )
 
     await travel_agent.__aenter__()
