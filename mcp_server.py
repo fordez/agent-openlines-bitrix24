@@ -52,7 +52,7 @@ async def manage_lead(name: str = None, phone: str = None, email: str = None, ti
 
 @mcp.tool()
 async def crm_add_note(entity_id: int, entity_type: str, message: str) -> str:
-    """Usa esta tool para AGREGAR UNA NOTA o comentario (ej: intereses, score, resumen) a cualquier Lead, Contacto o Negocio en el CRM."""
+    """Usa esta tool para AGREGAR UNA NOTA o comentario (ej: calificación del lead, intereses, score, resumen) a cualquier Lead, Contacto o Negocio en el CRM."""
     try:
         from tools.crm.crm_add_note import crm_add_note as _fn
         return await _fn(entity_id=entity_id, entity_type=entity_type, message=message)
@@ -75,12 +75,13 @@ async def lead_get(lead_id: int) -> str:
         return f"Error técnico en lead_get: {e}"
 
 @mcp.tool()
-async def lead_convert(lead_id: int, deal_category_id: int = 0, chat_id: int = None, create_company: bool = False) -> str:
-    """CONVIERTE un Lead en Deal + Contacto (B2C) o Contacto + Empresa (B2B). 
-    Úsalo como señal de avance (ej: al agendar cita). create_company=True para B2B."""
+async def lead_convert(lead_id: int, deal_category_id: int = 0, chat_id: int = None, create_deal: bool = True, create_contact: bool = True, create_company: bool = False) -> str:
+    """CONVIERTE un Lead en Deal (Negocio), Contacto y/o Empresa.
+    Usa los flags (create_deal, create_contact, create_company) para decidir qué entidades crear.
+    Ej: Para solo crear contacto: create_deal=False, create_contact=True."""
     try:
         from tools.crm.lead_convert import lead_convert as _fn
-        return await _fn(lead_id=lead_id, deal_category_id=deal_category_id, chat_id=chat_id, create_company=create_company)
+        return await _fn(lead_id=lead_id, deal_category_id=deal_category_id, chat_id=chat_id, create_deal=create_deal, create_contact=create_contact, create_company=create_company)
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en lead_convert: {e}\n{traceback.format_exc()}\n")
@@ -215,11 +216,11 @@ async def calendar_availability_check(start_time: str, end_time: str) -> str:
         return f"Error técnico en calendar_availability_check: {e}"
 
 @mcp.tool()
-async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "", remind_mins: int = 60) -> str:
-    """Usa esta tool para AGENDAR una cita. Proporciona remind_mins para configurar recordatorio automático."""
+async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "", remind_mins: int = 60, section_id: int = 0) -> str:
+    """Usa esta tool para AGENDAR una cita. Proporciona remind_mins para recordatorio y section_id para elegir el calendario."""
     try:
         from tools.calendar.calendar_event_create import calendar_event_create as _fn
-        return await _fn(title=title, start_time=start_time, end_time=end_time, description=description, remind_mins=remind_mins)
+        return await _fn(title=title, start_time=start_time, end_time=end_time, description=description, remind_mins=remind_mins, section_id=section_id)
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en calendar_event_create: {e}\n{traceback.format_exc()}\n")
@@ -294,11 +295,6 @@ async def deal_add_products(deal_id: int, products: list) -> str:
     from tools.catalog.deal_add_products import deal_add_products as _fn
     return await _fn(deal_id=deal_id, products=products)
 
-@mcp.tool()
-async def deal_update_products(row_id: int, fields: dict) -> str:
-    """Usa esta tool para MODIFICAR un producto ya agregado en un Deal (cantidad, precio)."""
-    from tools.catalog.deal_update_products import deal_update_products as _fn
-    return await _fn(row_id=row_id, fields=fields)
 
 @mcp.tool()
 async def deal_remove_product(row_id: int) -> str:
@@ -327,6 +323,13 @@ async def document_download(document_id: int) -> str:
     return await _fn(document_id=document_id)
 
 # ─── Drive ────────────────────────────────────────────────────────
+
+@mcp.tool()
+async def drive_resolve_workspace(entity_id: int, entity_type: str, entity_name: str = "Cliente") -> str:
+    """PRINCIPAL: Resuelve o crea la carpeta de trabajo específica para el cliente actual.
+    Sigue la regla de 'Dominio de la Identidad': Todo archivo debe vivir en esta carpeta."""
+    from tools.drive.drive_resolve_workspace import drive_resolve_workspace as _fn
+    return await _fn(entity_id=entity_id, entity_type=entity_type, entity_name=entity_name)
 
 @mcp.tool()
 async def drive_folder_create(name: str, parent_id: int = None) -> str:
@@ -358,7 +361,7 @@ async def drive_file_download(file_id: int) -> str:
 async def lead_reactivate_by_client(lead_id: int) -> str:
     """Usa esta tool cuando un cliente con Lead anterior vuelve a escribir. Reactiva el Lead cambiando su STATUS_ID."""
     try:
-        from tools.followup.lead_reactivate_by_client import lead_reactivate_by_client as _fn
+        from tools.crm.lead_reactivate_by_client import lead_reactivate_by_client as _fn
         return await _fn(lead_id=lead_id)
     except Exception as e:
         import traceback
@@ -369,7 +372,7 @@ async def lead_reactivate_by_client(lead_id: int) -> str:
 async def deal_update_probability_client(deal_id: int, probability: int) -> str:
     """Usa esta tool para ACTUALIZAR la probabilidad de cierre de un Deal (0-100)."""
     try:
-        from tools.followup.deal_update_probability_client import deal_update_probability_client as _fn
+        from tools.deal.deal_update_probability_client import deal_update_probability_client as _fn
         return await _fn(deal_id=deal_id, probability=probability)
     except Exception as e:
         import traceback
@@ -420,15 +423,24 @@ async def session_crm_get(chat_id: int) -> str:
         return f"Error técnico en session_crm_get: {e}"
 
 @mcp.tool()
-async def session_crm_bind(chat_id: int, entity_id: int, entity_type: str = "LEAD") -> str:
-    """Usa esta tool DESPUÉS de crear un Lead para VINCULARLO explícitamente a la sesión de chat actual. REQUIERE entity_id."""
-    try:
-        from tools.openlines.session_crm_bind import session_crm_bind as _fn
-        return await _fn(chat_id=chat_id, entity_id=entity_id, entity_type=entity_type)
-    except Exception as e:
-        import traceback
-        sys.stderr.write(f"  ❌ Error en session_crm_bind: {e}\n{traceback.format_exc()}\n")
-        return f"Error técnico en session_crm_bind: {e}"
+async def session_operator_list(config_id: int = 1) -> str:
+    """Lista los operadores ONLINE de la línea abierta. Úsalo ANTES de transferir para saber si hay alguien disponible."""
+    from tools.openlines.session_operator_list import session_operator_list as _fn
+    return await _fn(config_id=config_id)
+
+@mcp.tool()
+async def session_queue_info(config_id: int = 1) -> str:
+    """Consulta la config de la cola de atención: cuántos operadores online, tiempo de rotación y estimado de espera."""
+    from tools.openlines.session_queue_info import session_queue_info as _fn
+    return await _fn(config_id=config_id)
+
+@mcp.tool()
+async def session_history_read(session_id: int) -> str:
+    """Lee el historial de una sesión de forma SILENCIOSA (sin que el bot aparezca en el chat).
+    Ideal para analizar la charla operador-cliente y generar notas internas con sugerencias."""
+    from tools.openlines.session_history_read import session_history_read as _fn
+    return await _fn(session_id=session_id)
+
 
 # ─── Activity / Tasks (Observer) ─────────────────────────────────
 
@@ -442,6 +454,28 @@ async def task_create(title: str, description: str, responsible_id: int = None, 
         import traceback
         sys.stderr.write(f"  ❌ Error en task_create: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en task_create: {e}"
+
+@mcp.tool()
+async def task_list(entity_id: int = None, entity_type: str = "LEAD") -> str:
+    """Lista las tareas de Bitrix24, opcionalmente filtradas por una entidad CRM."""
+    from tools.task.task_list import task_list as _fn
+    return await _fn(entity_id=entity_id, entity_type=entity_type)
+
+# ─── Activity / CRM Activities ───────────────────────────────────
+
+@mcp.tool()
+async def crm_activity_add(entity_id: int, entity_type: str, subject: str, type_id: int = 2, start_time: str = None, end_time: str = None, description: str = "") -> str:
+    """Usa esta tool para AGREGAR una actividad (Llamada, Reunión, Email) al CRM.
+    Debe usarse siempre que el CONTEXTO de la charla implique una acción pendiente, una promesa de respuesta o un seguimiento necesario."""
+    from tools.activity.crm_activity_add import crm_activity_add as _fn
+    return await _fn(entity_id=entity_id, entity_type=entity_type, subject=subject, type_id=type_id, start_time=start_time, end_time=end_time, description=description)
+
+@mcp.tool()
+async def crm_activity_list(entity_id: int, entity_type: str) -> str:
+    """Lista las actividades registradas para un Lead o Deal."""
+    from tools.activity.crm_activity_list import crm_activity_list as _fn
+    return await _fn(entity_id=entity_id, entity_type=entity_type)
+
 
 # ═══════════════════════════════════════════════════════════════════
 # RESOURCES — Datos de solo-lectura para contexto
@@ -526,6 +560,25 @@ async def resource_catalog_products(section_id: int) -> str:
     from tools.catalog.catalog_product_list import catalog_product_list as _fn
     return await _fn(section_id=section_id)
 
+@mcp.resource("bitrix://openlines/session/{chat_id}/crm")
+async def resource_session_crm(chat_id: int) -> str:
+    """Verifica qué Lead o Deal está vinculado a la sesión de chat actual."""
+    from tools.openlines.session_crm_get import session_crm_get as _fn
+    return await _fn(chat_id=chat_id)
+
+
+@mcp.resource("bitrix://crm/{entity_type}/{entity_id}/tasks")
+async def resource_entity_tasks(entity_type: str, entity_id: int) -> str:
+    """Lista de tareas activas vinculadas a una entidad CRM (LEAD, DEAL, etc.)."""
+    from tools.task.task_list import task_list as _fn
+    return await _fn(entity_id=entity_id, entity_type=entity_type)
+
+@mcp.resource("bitrix://drive/folder/{folder_id}/items")
+async def resource_drive_folder_items(folder_id: int) -> str:
+    """Lista de archivos y carpetas dentro de una ubicación del Drive."""
+    from tools.drive.drive_file_list import drive_file_list as _fn
+    return await _fn(folder_id=folder_id)
+
 
 # ═══════════════════════════════════════════════════════════════════
 # PROMPTS — Plantillas de orquestación para guiar al agente
@@ -580,10 +633,11 @@ Fecha preferida: {preferred_date or 'Flexible'}
 Tipo: {meeting_type}
 
 PASOS A SEGUIR:
-1. Usa `calendar_availability_check` para el rango de fechas solicitado.
-2. **SI EL CLIENTE ES UN LEAD**: Ejecuta `lead_convert` para crear el Negocio (Deal) ANTES de agendar.
-3. Con el DEAL_ID (o el ID de la entidad CRM), usa `calendar_event_create` para agendar.
-4. Confirma la cita al cliente resaltando que ya está en agenda.
+1. **Verificar Calendario**: Usa el recurso `bitrix://calendar/types` para identificar el ID del calendario adecuado (ej: 'General', 'Ventas').
+2. Usa `calendar_availability_check` para el rango de fechas solicitado.
+3. **SI EL CLIENTE ES UN LEAD**: Ejecuta `lead_convert` para crear el Negocio (Deal) ANTES de agendar.
+4. Con el DEAL_ID y el `section_id` del calendario, usa `calendar_event_create` para agendar.
+5. Confirma la cita al cliente resaltando que ya está en agenda.
 
 NOTA: La tool `calendar_event_create` ya incluye el recordatorio de 60 min por defecto."""
 
@@ -617,15 +671,13 @@ PASOS:
 
 
 @mcp.prompt()
-async def check_and_bind_crm(chat_id: int, lead_id: int = None) -> str:
-    """Guía: Verificar si el chat ya tiene CRM y vincular un Lead si es necesario."""
+async def check_crm_status(chat_id: int) -> str:
+    """Guía: Verificar si el chat ya tiene CRM."""
     return f"""INSTRUCCIÓN: Gestión de CRM en Chat
     
 PASOS:
-1. Usa `session_crm_get` para ver si el chat ({chat_id}) ya tiene un Lead o Deal.
-2. Si NO hay nada vinculado y acabas de crear un Lead ({lead_id or 'ID_NUEVO'}), usa `session_crm_bind`.
-3. Esto asegura que la conversación aparezca dentro de la ficha del Lead en Bitrix24.
-"""
+1. Usa `session_crm_get` para ver si el chat ({chat_id}) ya tiene un Lead o Deal vinculado. 
+2. Si existe un vínculo, evita duplicar esfuerzos. Si no existe, puedes proceder con la calificación."""
 
 @mcp.prompt()
 async def close_or_transfer_session(chat_id: int, reason: str = "") -> str:
@@ -650,9 +702,8 @@ Acción solicitada: {action or 'Revisar estado'}
 PASOS A SEGUIR:
 1. Usa `deal_get` para obtener información completa del Deal.
 2. Según la acción:
-   - Actualizar info → `deal_update_info`
-   - Mover etapa → `deal_move_stage`
-   - Agregar productos → `catalog_product_search` → `deal_add_products`
+    - Mover etapa → `deal_move_stage`
+    - Gestionar Carrito → `catalog_product_search` → `deal_add_products` / `deal_remove_product`
    - Cerrar → `deal_mark_closed`
    - Agregar nota → `crm_add_note` (entity_type='DEAL')
 3. Registra siempre un resumen de la gestión con `crm_add_note`.
@@ -662,17 +713,19 @@ NOTA: Siempre verificar el estado actual antes de hacer cambios."""
 
 @mcp.prompt()
 async def conversion_strategy(lead_id: int, chat_id: int = None, is_b2b: bool = False) -> str:
-    """Guía: Cuándo y cómo realizar la conversión de Lead a Deal."""
+    """Guía: Cuándo y cómo realizar la conversión de Lead a Deal/Contacto."""
     return f"""INSTRUCCIÓN: El Salto a Negocio (Conversion)
     
 La SEÑAL para convertir es el AGENDAMIENTO de una cita o una petición formal de cotización.
     
 PASOS:
 1. Determina si es B2C (Individuo) o B2B (Empresa).
-2. Ejecuta `lead_convert` con lead_id={lead_id}, chat_id={chat_id} and create_company={is_b2b}.
-3. Recibirás un DEAL_ID y un CONTACTO_ID (y opcionalmente COMPANY_ID).
-4. Usa el DEAL_ID para crear el evento en el calendario.
-5. Esto asegura que el "vendedor" vea la cita atada al Negocio real.
+2. Ejecuta `lead_convert` con los flags apropiados:
+   - B2C Estándar: `create_deal=True`, `create_contact=True`
+   - B2B Estándar: `create_deal=True`, `create_contact=True`, `create_company=True`
+   - Solo Base de Datos: `create_deal=False`, `create_contact=True`
+3. Recibirás los IDs de las entidades creadas.
+4. Usa el DEAL_ID para gestionar la venta.
 """
 
 @mcp.prompt()
@@ -693,7 +746,7 @@ async def add_crm_note(entity_id: int, entity_type: str = "LEAD") -> str:
     """Guía: Registrar información importante en el historial del CRM."""
     return f"""INSTRUCCIÓN: Registro de Notas en CRM
     
-Usa `crm_add_note` para dejar constancia de cualquier detalle relevante que no encaje en un campo estándar (ej: preferencias de viaje, presupuesto mencionado, score de interés).
+Usa `crm_add_note` para dejar constancia de cualquier detalle relevante que no encaje en un campo estándar (ej: calificación del lead, preferencias de viaje, presupuesto mencionado, score de interés).
     
 PASOS:
 1. Define la entidad ({entity_type}) y su ID ({entity_id}).
@@ -708,22 +761,89 @@ async def quote_generation_flow(deal_id: int, product_name: str = "") -> str:
     
 PASOS PARA UNA COTIZACIÓN EXITOSA:
 1. **Buscar**: Usa `catalog_product_search` para encontrar el ID del producto (ej: {product_name or '...'}) y su precio.
-2. **Añadir**: Usa `deal_add_products` para vincular ese producto al Deal ({deal_id}).
-3. **Plantilla**: Usa `document_template_list` para ver qué plantillas de cotización hay disponibles (entity_type_id=2).
-4. **Generar**: Usa `document_generate` con el `template_id` elegido y el `entity_id`={deal_id}.
-5. **Entregar**: Usa `document_download` para darle los links de PDF/Word al cliente.
-6. **Nota**: Registra el envío de la cotización con `crm_add_note`.
+2. **Auto-Exploración**: Si no encuentras el producto exacto, usa el recurso `bitrix://catalogs` y luego `resource_catalog_products` para descubrir qué hay disponible en el inventario.
+3. **Añadir**: Usa `deal_add_products` para vincular ese producto al Deal ({deal_id}).
+4. **Plantilla**: Usa `document_template_list` para ver qué plantillas de cotización hay disponibles (entity_type_id=2).
+5. **Generar**: Usa `document_generate` con el `template_id` elegido y el `entity_id`={deal_id}.
+6. **Entregar**: Usa `document_download` para darle los links de PDF/Word al cliente.
+7. **Nota**: Registra el envío de la cotización con `crm_add_note`.
 """
 
 @mcp.prompt()
-async def internal_ops_orchestration(entity_id: int = None, entity_type: str = "LEAD") -> str:
-    """Guía: Cuándo crear una Nota vs una Tarea interna."""
-    return f"""INSTRUCCIÓN: Gestión de Seguimiento (Nota vs Tarea)
+async def catalog_discovery_and_sales() -> str:
+    """Guía: Explorar catálogos y categorías cuando el cliente no es específico."""
+    return f"""INSTRUCCIÓN: Descubrimiento Dinámico de Productos
     
-PASOS PARA DECIDIR:
-1. **Nota (`crm_add_note`)**: Úsala para REGISTRAR INTERACCIONES. Es HISTORIAL.
-2. **Tarea (`task_create`)**: Úsala para ACCIONES PENDIENTES. Es TRABAJO POR HACER con un responsable.
-3. **Regla de Oro**: Si requiere un responsable y un plazo (Deadline), es una Tarea. Si es solo información, es una Nota.
+Si el cliente pregunta "¿qué tienes?" o no eres capaz de encontrar algo específico, sigue esta ruta lógica:
+
+1. **Listar Catálogos**: Usa el recurso `bitrix://catalogs` para ver las áreas generales (ej: Paquetes, Hoteles).
+2. **Explorar Categorías**: Con el `catalog_id` cottonido, usa el recurso `bitrix://catalog/ID/categories`.
+3. **Ver Productos**: Usa `resource_catalog_products` para listar los productos de una categoría de interés.
+4. **Ofrecer**: Presenta las opciones al cliente resaltando precios y beneficios.
+
+OBJETIVO: Ser proactivo y no limitarse a búsquedas exactas fallidas."""
+
+@mcp.prompt()
+async def chat_management_flow(chat_id: int) -> str:
+    """Guía: Estética de bandeja, vinculación CRM y transferencia."""
+    return f"""INSTRUCCIÓN: Gestión Profesional de Chat (Openlines)
+    
+PASOS OBLIGATORIOS PARA EL CONTROL DEL CHAT:
+
+1. **Estética (Nombre del Chat)**: En cuanto identifiques el destino o motivo (ej: "Interés en Dubái"), usa de inmediato `session_title_update` para renombrar el chat {chat_id}.
+   - Formato sugerido: "[Destino] - [Nombre del Cliente]".
+
+2. **Vínculo CRM**: Usa el recurso `bitrix://openlines/session/{chat_id}/crm` para ver si ya hay un Lead. Si no lo hay y tienes datos (nombre/tel), usa `manage_lead`.
+
+3. **Transferencia Inteligente**: 
+   - Mantén la charla mientras sea una consulta de catálogo o calificación.
+   - **ANTES de transferir**: Usa `session_operator_list` para verificar si hay alguien online. Si no hay nadie, informa al cliente y ofrece tomar sus datos.
+   - **Si hay operadores**: Usa `session_queue_info` para estimar el tiempo de espera y comunicárselo al cliente (ej: "Te paso con un agente, el tiempo aprox. es de X segundos").
+   - **Manejo Off-Topic**: Si el cliente pregunta por temas ajenos a la agencia, intenta redirigir una vez. Al segundo intento fallido, usa `session_transfer` obligatoriamente.
+   - Usa `session_transfer` también cuando el cliente pida un humano o la venta requiera negociación manual compleja.
+
+4. **Escucha Silenciosa**: Si ya se transfirió a un humano, puedes usar `session_history_read` para leer la charla sin ser visible y generar notas internas (`crm_add_note`) con sugerencias para el equipo.
+
+5. **Cierre**: No cierres la sesión (`session_finish`) a menos que el cliente se despida y el caso esté resuelto.
+"""
+
+
+
+@mcp.prompt()
+async def internal_ops_orchestration(entity_id: int = None, entity_type: str = "LEAD") -> str:
+    """Guía: Cuándo crear una Nota vs Actividad vs Tarea según el contexto."""
+    return f"""INSTRUCCIÓN: Gestión de Seguimiento Interno Proactivo
+    
+Analiza el CONTEXTO de la conversación para decidir la herramienta:
+
+1. **Nota (`crm_add_note`)**: Úsala cuando la información es meramente INFORMATIVA o HISTÓRICA (ej: "El cliente dice que prefiere playa"). No requiere ninguna acción futura.
+
+2. **Actividad (`crm_activity_add`)**: Úsala para cualquier ACCIÓN CONTEXTUAL que requiera un seguimiento o respuesta (ej: "Quedamos en llamarlo", "Enviar presupuesto modificado", "Verificar disponibilidad de hotel"). 
+   - Si detectas una PROMESA o COMPROMISO de tiempo en el chat, genera una Actividad.
+   - Es el "pulso" comercial: llamadas, correos o tareas rápidas.
+
+3. **Tarea (`task_create`)**: Úsala para OPERACIONES COMPLEJAS o procesos que involucren a otros departamentos (ej: "Reserva formal de grupo", "Gestión de visas", "Armado de itinerario a medida"). 
+
+REGLA DE CONTEXTO: 
+- ¿Es solo un dato? -> Nota.
+- ¿Hay algo que HACER o RESPONDER pronto? -> Actividad.
+- ¿Es un PROYECTO o proceso estructurado? -> Tarea.
+"""
+
+@mcp.prompt()
+async def organize_drive_storage(client_name: str, entity_id: int, entity_type: str = "LEAD") -> str:
+    """Guía: Resolver dominio de identidad → organizar documentos."""
+    return f"""INSTRUCCIÓN: Dominio de la Identidad en Drive
+    
+Cliente: {client_name}
+ID Entidad: {entity_id} ({entity_type})
+    
+REGAL DE ORO: No guardes archivos en la raíz ni en carpetas genéricas.
+    
+PASOS OBLIGATORIOS:
+1. **Resolver Espacio**: Llama SIEMPRE a `drive_resolve_workspace` primero. Este te dará el ID de la carpeta exclusiva para este cliente.
+2. **Operar**: Usa ese `workspace_id` para realizar cualquier subida (`drive_file_upload`) o creación de subcarpetas.
+3. **Consulta**: Si necesitas ver qué archivos tiene este cliente, usa el recurso `bitrix://drive/folder/ID/items` con el ID del workspace resuelto.
 """
 
 # ═══════════════════════════════════════════════════════════════════

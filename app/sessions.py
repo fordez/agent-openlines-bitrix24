@@ -64,7 +64,19 @@ async def cleanup_expired_sessions():
 
 async def create_new_session(chat_id: str) -> AgentSession:
     """Crea una nueva sesión de agente para un chat_id."""
-    llm_provider = os.getenv("LLM_PROVIDER", "google").lower()
+    # Cargar configuración desde el archivo Python (Fuente de Verdad)
+    try:
+        from agent_config import CONFIG
+        config = CONFIG
+    except ImportError:
+        config = {}
+
+    ai_config = config.get("ai", {})
+    llm_provider = ai_config.get("provider", os.getenv("LLM_PROVIDER", "google")).lower()
+
+    
+    # Nota: El mcp-agent lee el modelo de mcp_agent.config.yaml, 
+    # pero aquí podemos forzar la lógica de proveedor.
 
     history_seed = await format_history_str(chat_id)
     instruction = SYSTEM_PROMPT
@@ -92,7 +104,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
         agent_app=agent_app,
     )
 
-    print(f"  🆕 Nueva sesión creada para chat {chat_id} (provider: {llm_provider}, mcp: {MCP_SERVER_NAME})")
+    print(f"  🆕 Nueva sesión creada para chat {chat_id} (provider: {llm_provider}, source: agent_config.json)")
     return session
 
 

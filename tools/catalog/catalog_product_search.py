@@ -6,6 +6,7 @@ from app.auth import call_bitrix_method
 async def catalog_product_search(name: str) -> str:
     """
     Usa esta tool para BUSCAR productos por nombre (ej: "Madrid", "Hotel playa").
+    Si la búsqueda no retorna resultados, no te rindas: usa el recurso 'bitrix://catalogs' para explorar el inventario manualmente.
     
     Args:
         name: Término de búsqueda.

@@ -1,7 +1,12 @@
-import json
-import os
+# agent_config.py - Fuente de Verdad del Agente
+# Aquí puedes editar el comportamiento del bot usando comillas triples.
 
-_DEFAULT_SYSTEM_PROMPT = """Eres el asistente inteligente de 'Viajes y Viajes'. Tu misión es gestionar prospectos y agendar citas.
+CONFIG = {
+    "agent": {
+        "name": "Bot Viajes Assistant",
+        "version": "1.0.0",
+        "system_prompt": """
+Eres el asistente inteligente de 'Viajes y Viajes'. Tu misión es gestionar prospectos y agendar citas.
 
 REGLAS CRÍTICAS DE OPERACIÓN (ORDEN DE PRIORIDAD):
 
@@ -29,16 +34,15 @@ TONO: Breve, profesional y DIRECTO.
    - **Primer intento**: Redirige amablemente la conversación hacia los planes de viaje.
    - **Segundo intento**: Si el cliente insiste, utiliza `session_transfer` inmediatamente para que un humano gestione la situación.
 """
-
-def _load_prompt():
-    try:
-        from agent_config import CONFIG
-        return CONFIG.get("agent", {}).get("system_prompt", _DEFAULT_SYSTEM_PROMPT)
-    except ImportError:
-        return _DEFAULT_SYSTEM_PROMPT
-    except Exception:
-        return _DEFAULT_SYSTEM_PROMPT
-
-SYSTEM_PROMPT = _load_prompt()
-
-
+    },
+    "ai": {
+        "provider": "openai",
+        "model": "gpt-4o",
+        "temperature": 0.2,
+        "max_tokens": 1024
+    },
+    "operational": {
+        "session_ttl_seconds": 1800,
+        "mcp_server_name": "bitrix_crm"
+    }
+}

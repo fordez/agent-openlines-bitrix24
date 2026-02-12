@@ -4,15 +4,19 @@ Tool to create new calendar events in Bitrix24.
 from app.auth import call_bitrix_method
 import sys
 
-async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "", remind_mins: int = 60) -> str:
+async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "", remind_mins: int = 60, section_id: int = 0) -> str:
     """
-    Agrega un evento al calendario.
+    Agrega un evento al calendario en una sección específica.
     Si se proporciona remind_mins, se configura un recordatorio automático.
+    
+    IMPORTANT INSTRUCTION FOR AGENT:
+    1. Confirm the creation briefly: "Done. Meeting scheduled for [Date] at [Time]."
+    2. Do NOT add unnecessary chatter.
     """
     if not title or not start_time or not end_time:
         return "Error: title, start_time y end_time son requeridos."
 
-    sys.stderr.write(f"  📅 Tool calendar_event_create: {title} ({start_time})\n")
+    sys.stderr.write(f"  📅 Tool calendar_event_create: {title} ({start_time}) en sección {section_id}\n")
 
     try:
         from app.auth import get_current_user_id
@@ -25,7 +29,7 @@ async def calendar_event_create(title: str, start_time: str, end_time: str, desc
             "from": start_time,
             "to": end_time,
             "description": description,
-            "section": 0
+            "section": section_id
         }
 
         if remind_mins:

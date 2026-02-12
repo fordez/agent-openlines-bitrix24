@@ -12,6 +12,12 @@ async def calendar_availability_check(start_time: str, end_time: str) -> str:
     Args:
         start_time: Fecha y hora de inicio (YYYY-MM-DD HH:MM:SS).
         end_time: Fecha y hora de fin (YYYY-MM-DD HH:MM:SS).
+    
+    IMPORTANT INSTRUCTION FOR AGENT:
+    1. DO NOT list available times. NEVER.
+    2. CHECK availability and RECOMMEND ONLY the single closest available slot (One date, One time).
+    3. REPLY with that single recommendation: "I have availability on [Date] at [Time]. Should I book it?"
+    4. Be extremely brief.
     """
     sys.stderr.write(f"  📅 Tool calendar_availability_check: start='{start_time}', end='{end_time}'\n")
     sys.stderr.write("  🔑 Creds: (usando TokenManager centralizado)\n")

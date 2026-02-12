@@ -11,19 +11,17 @@ He analizado las **49 herramientas** existentes. A continuación, la clasificaci
 | **CRM** | `lead_update` | Modifica datos del prospecto |
 | **CRM** | `lead_convert` | Dispara el proceso de venta (Deal) |
 | **CRM** | `crm_add_note` | Registra historial/comentarios |
-| **Deals** | `deal_update_info` | Actualiza montos/títulos |
 | **Deals** | `deal_move_stage` | Cambia etapa del embudo |
 | **Deals** | `deal_mark_closed` | Cierra negocio (Ganado/Perdido) |
 | **Calendar** | `calendar_event_create` | Agenda cita |
 | **Calendar** | `calendar_event_update` | Reprograma cita |
 | **Calendar** | `calendar_event_delete` | Cancela cita |
 | **Catalog** | `deal_add_products` | Vincula inventario al negocio |
-| **Catalog** | `deal_update_products` | Ajusta cantidades/precios |
 | **Catalog** | `deal_remove_product` | Quita del carrito |
 | **OpenLines** | `session_answer` | Acepta el chat |
 | **OpenLines** | `session_transfer` | Pasa a humano |
 | **OpenLines** | `session_finish` | Cierra sesión |
-| **OpenLines** | `session_crm_bind` | Vincula chat a ficha CRM |
+| **OpenLines** | `session_finish` | Cierra sesión |
 | **Drive** | `drive_folder_create` | Crea estructura de archivos |
 | **Drive** | `drive_file_upload` | Sube documentos |
 | **Tasks** | `task_create` | Crea flujo de trabajo interno |

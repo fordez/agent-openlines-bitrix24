@@ -120,46 +120,89 @@ async def manage_lead(name: str = None, phone: str = None, email: str = None,
             else:
                 action_taken = "Nuevo Lead creado (Prospecto nuevo)."
 
-            sys.stderr.write(f"  🆕 Creando Lead nuevo...\n")
-            
-            # Si hay chat_id, usamos imopenlines.crm.lead.create para vincular visualmente
+            # Metadata para vincular chat a la ficha
+            chat_metadata = {}
             if chat_id:
                 try:
-                   sys.stderr.write(f"  🔗 Usando imopenlines.crm.lead.create para vincular chat {chat_id}...\n")
-                   create_res = await call_bitrix_method("imopenlines.crm.lead.create", {
-                       "CHAT_ID": chat_id,
-                       "FIELDS": fields
-                   })
+                    # Obtener detalles del diálogo para extraer USER_CODE, LINE_ID y SESSION_ID
+                    dialog_res = await call_bitrix_method("imopenlines.dialog.get", {"CHAT_ID": chat_id})
+                    if dialog_res.get("result"):
+                        d = dialog_res["result"]
+                        # imol|workflow_whatsapp|24|573158273960|1068
+                        user_code = d.get("entity_link", {}).get("id", "") or d.get("entity_id", "")
+                        
+                        # Extraer Session ID de entity_data_1 (sexto parámetro)
+                        data_1 = d.get("entity_data_1", "")
+                        session_id = None
+                        if data_1 and "|" in data_1:
+                            parts = data_1.split("|")
+                            if len(parts) >= 6:
+                                session_id = parts[5]
+                        
+                        chat_metadata = {
+                            "USER_CODE": user_code,
+                            "LINE_ID": d.get("entity_id", "").split("|")[1] if "|" in d.get("entity_id", "") else "0",
+                            "SESSION_ID": session_id
+                        }
+                        
+                        if user_code:
+                            fields["IM"] = [{"VALUE": f"imol|{user_code}", "VALUE_TYPE": "IMOL"}]
+                            sys.stderr.write(f"  🔗 Preparado vínculo IMOL: {user_code}\n")
                 except Exception as e:
-                   sys.stderr.write(f"  ⚠️ Error en imopenlines.crm.lead.create: {e}. Reintentando con crm.lead.add...\n")
-                   create_res = await call_bitrix_method("crm.lead.add", {"fields": fields})
-            else:
-                # Creación estándar sin chat
-                create_res = await call_bitrix_method("crm.lead.add", {"fields": fields})
-                
+                    sys.stderr.write(f"  ⚠️ Error obteniendo metadata del chat: {e}\n")
+
+            sys.stderr.write(f"  🆕 Creando Lead nuevo mediante crm.lead.add...\n")
+            create_res = await call_bitrix_method("crm.lead.add", {"fields": fields})
             final_lead_id = create_res.get("result")
             
             if not final_lead_id:
-                return f"Error al crear lead: {create_res.get('error_description')}"
+                return f"Error al crear lead: {create_res.get('error_description', 'Error desconocido')}"
+            
+            sys.stderr.write(f"  ✅ Lead nuevo ID: {final_lead_id}\n")
 
         # 4. Vincular Chat (Independientemente de si se creó o actualizó)
         if chat_id and final_lead_id:
             sys.stderr.write(f"  🔗 Vinculando chat {chat_id} al Lead {final_lead_id}...\n")
             
-            # Intento de vinculación directa (im.chat.setEntity) - COMENTADO PORQUE DA 404
-            # try:
-            #     await call_bitrix_method("im.chat.setEntity", {
-            #         "CHAT_ID": chat_id,
-            #         "ENTITY_TYPE": "LEAD",
-            #         "ENTITY_ID": final_lead_id
-            #     })
-            # except Exception as e:
-            #      sys.stderr.write(f"  ⚠️ Warning vinculando chat: {e}\n")
-            
-            # Intento de registrar actividad en timeline (OpenLines message falló, usamos comentario standard)
+            # 1. Crear ACTIVIDAD DE SESIÓN (Fuerza el vínculo visual en el Contact Center)
+            try:
+                # Si no tenemos metadata (porque fue un update), intentamos obtenerla ahora
+                if not locals().get("chat_metadata"):
+                    dialog_res = await call_bitrix_method("imopenlines.dialog.get", {"CHAT_ID": chat_id})
+                    if dialog_res.get("result"):
+                        d = dialog_res["result"]
+                        user_code = d.get("entity_link", {}).get("id", "") or d.get("entity_id", "")
+                        data_1 = d.get("entity_data_1", "")
+                        session_id = data_1.split("|")[5] if "|" in data_1 and len(data_1.split("|")) >= 6 else None
+                        chat_metadata = {
+                            "USER_CODE": user_code,
+                            "LINE_ID": d.get("entity_id", "").split("|")[1] if "|" in d.get("entity_id", "") else "0",
+                            "SESSION_ID": session_id
+                        }
+
+                if chat_metadata.get("SESSION_ID"):
+                    await call_bitrix_method("crm.activity.add", {
+                        "fields": {
+                            "OWNER_ID": final_lead_id,
+                            "OWNER_TYPE_ID": 1, # Lead
+                            "TYPE_ID": 6,       # IM
+                            "PROVIDER_ID": "IMOPENLINES_SESSION",
+                            "PROVIDER_TYPE_ID": chat_metadata["LINE_ID"],
+                            "ASSOCIATED_ENTITY_ID": chat_metadata["SESSION_ID"],
+                            "SUBJECT": f"Sesión de Chat (Canal Abierto)",
+                            "COMPLETED": "Y",
+                            "DIRECTION": 1,
+                            "ORIGIN_ID": f"IMOL_{chat_metadata['SESSION_ID']}",
+                            "PROVIDER_PARAMS": {"USER_CODE": chat_metadata["USER_CODE"]}
+                        }
+                    })
+                    sys.stderr.write(f"  ⛓️ Actividad de sesión vinculada.\n")
+            except Exception as e:
+                sys.stderr.write(f"  ⚠️ Error creando actividad de vínculo: {e}\n")
+
+            # 2. Registrar NOTA en el timeline (Backup visual)
             try:
                 msg = f"[BOT] Gestión automática: {action_taken} (Chat ID: {chat_id})"
-                # Usamos crm.timeline.comment.add que es más robusto y no requiere binding estricto de chat
                 await call_bitrix_method("crm.timeline.comment.add", {
                     "fields": {
                         "ENTITY_ID": final_lead_id,
