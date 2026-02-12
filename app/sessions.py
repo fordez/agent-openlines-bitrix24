@@ -64,15 +64,8 @@ async def cleanup_expired_sessions():
 
 async def create_new_session(chat_id: str) -> AgentSession:
     """Crea una nueva sesión de agente para un chat_id."""
-    # Cargar configuración desde el archivo Python (Fuente de Verdad)
-    try:
-        from agent_config import CONFIG
-        config = CONFIG
-    except ImportError:
-        config = {}
-
-    ai_config = config.get("ai", {})
-    llm_provider = ai_config.get("provider", os.getenv("LLM_PROVIDER", "google")).lower()
+    # AI config ahora vive en .env
+    llm_provider = os.getenv("LLM_PROVIDER", "google").lower()
 
     
     # Nota: El mcp-agent lee el modelo de mcp_agent.config.yaml, 
@@ -83,20 +76,39 @@ async def create_new_session(chat_id: str) -> AgentSession:
     if history_seed:
         instruction = f"{SYSTEM_PROMPT}\n\n{history_seed}"
 
-    agent_app = await app.run().__aenter__()
+    bot_name = os.getenv("BOT_NAME", "travel_assistant")
+    agent_version = os.getenv("AGENT_VERSION", "1.0.0")
 
     travel_agent = Agent(
-        name=f"travel_assistant_{chat_id}",
+        name=f"{bot_name}_v{agent_version}_{chat_id}",
         instruction=instruction,
         server_names=[MCP_SERVER_NAME, TRAVEL_SERVER_NAME],
     )
 
+    agent_app = await app.run().__aenter__()
+
+
+
     await travel_agent.__aenter__()
 
+    ai_model = os.getenv("AI_MODEL")
+    ai_temp = float(os.getenv("AI_TEMPERATURE", "0.2"))
+    ai_max_tokens = int(os.getenv("AI_MAX_TOKENS", "1024"))
+
     if llm_provider == "openai":
-        llm = await travel_agent.attach_llm(OpenAIAugmentedLLM)
+        llm = await travel_agent.attach_llm(
+            OpenAIAugmentedLLM, 
+            model_name=ai_model,
+            temperature=ai_temp,
+            max_tokens=ai_max_tokens
+        )
     else:
-        llm = await travel_agent.attach_llm(GoogleAugmentedLLM)
+        llm = await travel_agent.attach_llm(
+            GoogleAugmentedLLM,
+            model_name=ai_model,
+            temperature=ai_temp,
+            max_tokens=ai_max_tokens
+        )
 
     session = AgentSession(
         agent=travel_agent,

@@ -1,10 +1,9 @@
-# agent_config.py - Fuente de Verdad del Agente
+# agent_config.py - Fuente de Verdad del Agente (solo system prompt)
+# La config de AI, nombre y versión están en .env
 # Aquí puedes editar el comportamiento del bot usando comillas triples.
 
 CONFIG = {
     "agent": {
-        "name": "Bot Viajes Assistant",
-        "version": "3.0.0",
         "system_prompt": """
 Eres el asistente virtual de Viajes y Viajes. Agendas citas entre clientes y asesores.
 
@@ -125,15 +124,5 @@ Ejemplo 3 — Modificación de cita:
    3. Miércoles 19 a las 10:00 AM
    ¿Cuál prefieres?"
 """
-    },
-    "ai": {
-        "provider": "openai",
-        "model": "gpt-4o",
-        "temperature": 0.2,
-        "max_tokens": 1024
-    },
-    "operational": {
-        "session_ttl_seconds": 1800,
-        "mcp_server_name": "bitrix_crm"
     }
 }
