@@ -67,13 +67,13 @@ class FirestoreConfigService:
     async def get_tenant_config(self, tenant_id: str) -> dict:
         """
         Obtiene la configuración completa de un tenant.
-        Busca en Redis primero, luego unifica datos de Firestore:
+        Busca en Redis primero, luego unifica datos de Firestore en PARALELO:
         1. installations/{tenant_id} -> para obtener el DOMINIO
-        2. config-app/{tenant_id} -> UI settings
+        2. config-app/{domain} -> UI settings
         3. config-architect/{tenant_id} -> Personality
-        4. config-ai/{tenant_id} -> Tenant AI Settings
-        5. config-secrets/{domain} -> Bitrix Secrets (Shared by domain)
-        6. agents/{agent_id} -> (Legacy support, maybe optional now)
+        4. settings/ai -> Global AI Config
+        5. config-secrets/{domain} -> Bitrix Secrets
+        6. agents (query) -> Active Agent
         """
         cache_key = self._get_cache_key(tenant_id)
         cached = await self._redis.get(cache_key)
@@ -83,78 +83,74 @@ class FirestoreConfigService:
 
         print(f"📡 [Firestore] Cargando configuración completa para {tenant_id}...")
         
-        # 1. Obtener Domain de Installation (CRÍTICO para secrets)
-        install_doc = self._db.collection(Collections.INSTALLATIONS).doc(tenant_id).get()
-        if not install_doc.exists:
-            print(f"⚠️ Installation no encontrada para {tenant_id}")
-            return None
-            
-        install_data = install_doc.to_dict()
-        domain = install_data.get('domain')
+        domain = tenant_id
+
+        # Definir corutinas para fetch en paralelo
+        async def fetch_doc(collection, doc_id):
+            doc = await self._db.collection(collection).doc(doc_id).get()
+            return doc.to_dict() if doc.exists else {}
+
+        async def fetch_agent():
+            try:
+                agents_ref = self._db.collection(Collections.AGENTS)
+                query = agents_ref.where("tenantId", "==", tenant_id).where("isActive", "==", True).limit(1)
+                docs = query.stream()
+                async for doc in docs: # firestore async stream
+                     return doc.to_dict()
+                # Fallback implementation details might vary depending on lib version, 
+                # but standard sync stream in async context might block. 
+                # Ideally use an async-compatible method if available or run in executor.
+                # For now keeping it simple as 'stream' is often sync generator in python admin sdk.
+                # Let's use a standard get() for a known ID if possible, but here we query.
+                # simpler:
+                docs_list = [d async for d in docs] if hasattr(docs, '__aiter__') else [d for d in docs]
+                if docs_list:
+                    return docs_list[0].to_dict()
+            except Exception as e:
+                print(f"⚠️ Error buscando agente activo: {e}")
+            return {}
+
+        # Ejecutar en paralelo
+        # Nota: 'installations' y 'config-secrets' usan domain (tenant_id)
+        # 'config-app', 'config-architect' también usan tenant_id (domain)
+        # 'settings/ai' es fijo
         
-        # Iniciar diccionarios
-        app_data = {}
-        architect_data = {}
-        ai_data = {}
-        secrets_data = {}
+        results = await asyncio.gather(
+            fetch_doc(Collections.INSTALLATIONS, domain),
+            fetch_doc(Collections.CONFIG_APP, domain),
+            fetch_doc(Collections.CONFIG_ARCHITECT, domain),
+            fetch_doc('settings', 'ai'),
+            fetch_doc(Collections.CONFIG_SECRETS, domain),
+            fetch_agent()
+        )
         
-        # 2. Config App
-        app_doc = self._db.collection(Collections.CONFIG_APP).doc(tenant_id).get()
-        if app_doc.exists:
-            app_data = app_doc.to_dict()
+        install_data, app_data, architect_data, ai_data, secrets_data, agent_payload = results
 
-        # 3. Config Architect
-        arch_doc = self._db.collection(Collections.CONFIG_ARCHITECT).doc(tenant_id).get()
-        if arch_doc.exists:
-            architect_data = arch_doc.to_dict()
-            # Opcional: Cargar config de AI del arquitecto si fuera necesario
-            # arch_ai = self._db.collection('config-architect').doc(tenant_id).collection('ai').doc('config').get()
+        if not install_data:
+             print(f"⚠️ Installation Data no encontrada en installations/{domain}")
+        
+        if not ai_data:
+             print("⚠️ [Firestore] Global AI Settings (settings/ai) not found!")
 
-        # 4. Config AI
-        ai_doc = self._db.collection(Collections.CONFIG_AI).doc(tenant_id).get()
-        if ai_doc.exists:
-            ai_data = ai_doc.to_dict()
-
-        # 5. Config Secrets (Por DOMINIO)
-        if domain:
-            secrets_doc = self._db.collection(Collections.CONFIG_SECRETS).doc(domain).get()
-            if secrets_doc.exists:
-                secrets_data = secrets_doc.to_dict()
-
-        # 6. Active Agent Config (Dynamic from 'agents' collection)
-        # Buscar el primer agente activo para este tenant
+        # Process Agent Data
         agent_data = {}
-        try:
-            agents_ref = self._db.collection(Collections.AGENTS)
-            query = agents_ref.where("tenantId", "==", tenant_id).where("isActive", "==", True).limit(1)
-            docs = query.stream()
-            for doc in docs:
-                agent_payload = doc.to_dict()
-                # Mapear campos del esquema AIAgent a la estructura plana de config
-                agent_data = {
-                    "role": agent_payload.get("role"),
-                    "objective": agent_payload.get("objective"),
-                    "tone": agent_payload.get("tone"),
-                    "knowledge": agent_payload.get("knowledge"),
-                    # Nuevos campos avanzados (types.ts synced)
-                    "systemPrompt": agent_payload.get("systemPrompt"),
-                    "model": agent_payload.get("model"),
-                    "temperature": agent_payload.get("temperature"),
-                    "provider": agent_payload.get("provider"),
-                }
-                print(f"🤖 [Firestore] Agente activo encontrado: {agent_payload.get('name')} ({doc.id})")
-                break
-        except Exception as e:
-            print(f"⚠️ Error buscando agente activo: {e}")
-        
+        if agent_payload:
+            agent_data = {
+                "role": agent_payload.get("role"),
+                "systemPrompt": agent_payload.get("systemPrompt"),
+                "model": agent_payload.get("model"),
+                "temperature": agent_payload.get("temperature"),
+                "provider": agent_payload.get("provider"),
+            }
+            print(f"🤖 [Firestore] Agente activo encontrado: {agent_payload.get('name')}")
+
         # Combinar todo (Prioridad: secrets > agent > ai > architect > app)
-        # Flattened config for easier usage
         full_config = {
             "domain": domain,
             **app_data,
             **architect_data,
             **ai_data,
-            **agent_data,  # Agent overrides AI/Architect defaults
+            **agent_data,
             **secrets_data
         }
         
@@ -171,27 +167,22 @@ class FirestoreConfigService:
         def on_agent_change(col_snapshot, changes, read_time):
             # No usado actualmente si migramos a config-architect, pero lo mantenemos por compatibilidad
             for doc in col_snapshot:
-                 # asumiendo que el doc id es member_id o tiene campo tenantId
-                 # Si doc.id es member_id:
+                 # doc.id es domain (tenant identifier)
                  self._update_cache_background(doc.id)
 
         def on_config_change(col_snapshot, changes, read_time):
-            # Genérico para config-app, config-architect, config-ai donde doc.id == member_id
+            # Genérico para config-app, config-architect donde doc.id == domain
             for doc in col_snapshot:
                 self._update_cache_background(doc.id)
 
         def on_secrets_change(doc_snapshot, changes, read_time):
             # Para config-secrets, el doc ID es el DOMINIO.
-            # Debemos buscar qué tenants (member_ids) usan este dominio.
             for doc in doc_snapshot:
                 domain = doc.id
-                print(f"♻️ [Firestore] Secretos cambiaron para dominio {domain}. Buscando tenants afectados...")
+                print(f"♻️ [Firestore] Secretos cambiaron para dominio {domain}.")
                 try:
-                    # Buscar en installations quien tiene este domain
-                    inst_docs = self._db.collection(Collections.INSTALLATIONS).where('domain', '==', domain).stream()
-                    for inst in inst_docs:
-                        member_id = inst.id
-                        self._update_cache_background(member_id)
+                    # Invalidar caché directamente por dominio (que es el tenant_id)
+                    self._update_cache_background(domain)
                 except Exception as e:
                     print(f"❌ Error buscando tenants para dominio {domain}: {e}")
 

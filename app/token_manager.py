@@ -67,22 +67,16 @@ class TokenManager:
         from app.firestore_config import get_firestore_config
         fs = await get_firestore_config()
         
-        # 1. Necesitamos el dominio primero (está en installations)
-        # Podemos reusar _fetch_from_firestore que ya trae la info de installation
-        install_data = await self._fetch_from_firestore(member_id)
-        if not install_data or not install_data.get('domain'):
-             raise ValueError(f"No se encontró instalación/dominio para {member_id}")
-             
-        domain = install_data['domain']
+        # El member_id YA ES EL DOMINIO en esta arquitectura
+        domain = member_id
         
-        # 2. Buscar secretos por dominio
         doc = fs._db.collection('config-secrets').doc(domain).get()
         
         if doc.exists:
             data = doc.to_dict()
             return data.get('clientId'), data.get('clientSecret')
             
-        raise ValueError(f"No se encontraron credenciales para el dominio {domain} (tenant {member_id}) en config-secrets")
+        raise ValueError(f"No se encontraron credenciales para el dominio {domain} en config-secrets")
 
     async def get_token(self, member_id: str = None) -> str:
         """Obtiene un access_token válido para el tenant especificado o el actual."""
@@ -117,11 +111,14 @@ class TokenManager:
         sys.stderr.write(f"🔄 Refrescando token para tenant {member_id}...\n")
         return await self._refresh_token(member_id)
 
-    async def _fetch_from_firestore(self, member_id: str) -> dict:
-        """Busca tokens en la colección 'installations' de Firestore."""
+    async def _fetch_from_firestore(self, domain: str) -> dict:
+        """Busca tokens en 'installations/{domain}' directamente."""
         from app.firestore_config import get_firestore_config
         fs = await get_firestore_config()
-        doc = fs._db.collection('installations').doc(member_id).get()
+
+        # 1. Fetch Installation Data by Domain directly
+        # Ahora asumimos que 'member_id' (argumento) ES el dominio
+        doc = fs._db.collection('installations').doc(domain).get()
         
         if doc.exists:
             data = doc.to_dict()
@@ -130,8 +127,11 @@ class TokenManager:
                     'access_token': data['accessToken'],
                     'refresh_token': data['refreshToken'],
                     'expires_at': data.get('expiresAt', 0) / 1000 if data.get('expiresAt', 0) > 10000000000 else data.get('expiresAt', 0),
-                    'domain': data.get('domain')
+                    'domain': data.get('domain', domain)
                 }
+        else:
+            print(f"❌ [TokenManager] No se encontró instalación para el dominio: {domain}")
+            
         return None
 
     async def _sync_to_redis(self, member_id: str, tokens: dict):

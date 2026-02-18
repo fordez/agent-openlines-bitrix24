@@ -16,8 +16,8 @@ async def verify_schema_sync():
     """
     print("🧪 [TEST] Iniciando verificación de Esquema y Sincronización...")
     
-    tenant_id = os.getenv("BITRIX_MEMBER_ID", "de8a86baab829293f6c14beedf688e0c")
-    print(f"📍 Analizando Schema para Tenant: {tenant_id}")
+    tenant_id = os.getenv("BITRIX_MEMBER_ID", "workflowteams.bitrix24.es")
+    print(f"📍 Analizando Schema para Tenant (Domain): {tenant_id}")
 
     # Estructura del Esquema Firestore (Basado en Auditoría)
     SCHEMA_DEFINITION = {
@@ -27,7 +27,7 @@ async def verify_schema_sync():
         },
         "agents": {
             "key": "auto_id (filtro por tenantId)",
-            "fields": ["name", "role", "objective", "tone", "knowledge", "model", "temperature"]
+            "fields": ["name", "role", "systemPrompt", "model", "temperature"]
         },
         "config-ai": {
             "key": "member_id",
@@ -56,7 +56,7 @@ async def verify_schema_sync():
         mock_data = {
             "name": "Agente Test",
             "role": "Moderador de Prueba",
-            "knowledge": "Instrucciones de prueba desde Firestore.",
+            "systemPrompt": "Instrucciones de prueba desde Firestore.",
             "model": "gpt-4-turbo",
             "temperature": 0.8
         }

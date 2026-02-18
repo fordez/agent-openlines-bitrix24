@@ -35,6 +35,12 @@ async def startup():
     print("📊 System Metrics Logger iniciado")
 
 
+@server.get("/")
+async def health_check():
+    """Health check endpoint: 200 OK."""
+    return {"status": "ok", "service": "aibot24-chat"}
+
+
 @server.post("/")
 async def bitrix_webhook(request: Request):
     """
@@ -122,25 +128,25 @@ async def handle_message(data: dict):
         print("  ⚠️ Faltan DIALOG_ID o MESSAGE en el evento.")
         return
 
-    # Guardar dominio y member_id (las tools usan TokenManager, no este token)
+    # Guardar dominio (las tools usan TokenManager, no este token)
     import os
+    domain = None
     if client_endpoint:
         domain = client_endpoint.replace("https://", "").split("/")[0]
         os.environ["BITRIX_DOMAIN"] = domain
         os.environ["BITRIX_CLIENT_ENDPOINT"] = client_endpoint
     
-    # Extraer member_id del evento para identificar al tenant
-    auth_member_id = extracted.get("AUTH_member_id") or extracted.get("member_id")
-    if auth_member_id:
-        os.environ["BITRIX_MEMBER_ID"] = auth_member_id
+    # Usar DOMAIN como identificador del tenant (no member_id)
+    if domain:
+        os.environ["BITRIX_MEMBER_ID"] = domain  # Legacy env var, ahora contiene domain
         from app.context_vars import member_id_var
-        member_id_var.set(auth_member_id)
+        member_id_var.set(domain)  # Context var ahora usa domain
         
-        # Guardar mapeo chat_id -> member_id en Redis para que las tools puedan recuperarlo
+        # Guardar mapeo chat_id -> domain en Redis para que las tools puedan recuperarlo
         if chat_id:
             from app.redis_client import get_redis
             r = await get_redis()
-            await r.set(f"map:chat_to_member:{chat_id}", auth_member_id, ex=3600*24)
+            await r.set(f"map:chat_to_member:{chat_id}", domain, ex=3600*24)
 
     # Consultar LLM (tools usan TokenManager internamente)
     provider = os.getenv("LLM_PROVIDER", "unknown")

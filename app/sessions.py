@@ -85,32 +85,29 @@ async def create_new_session(chat_id: str) -> AgentSession:
     
     fs_service = await get_firestore_config()
     # Obtenemos el member_id del entorno (seteado en main.py al recibir el evento)
-    member_id = os.getenv("BITRIX_MEMBER_ID")
-    config = await fs_service.get_tenant_config(member_id) if member_id else None
+    # NOTA: Main.py ahora setea esto al DOMINIO (ej. workflowteams.bitrix24.es), no al member_id numérico.
+    tenant_id = os.getenv("BITRIX_MEMBER_ID")
+    config = await fs_service.get_tenant_config(tenant_id) if tenant_id else None
     
     if config:
         # 1. Check for explicit 'systemPrompt' (from config-architect or custom agent field)
         # This allows the Dashboard to fully control the prompt (overriding the codebase default)
         if config.get('systemPrompt'):
             dynamic_prompt = config.get('systemPrompt')
-            print(f"📜 [Sessions] Usando System Prompt raw desde Firestore para {member_id}")
+            print(f"📜 [Sessions] Usando System Prompt raw desde Firestore para {tenant_id}")
             
             # Optional: Si también hay variables de agente activo, las anexamos?
             # Por ahora, asumimos que si hay systemPrompt, es AUTOSIFICIENTE O INCLUYE VARIABLES.
             # Pero para soportar "Knowledge" dinámico + "System Prompt" base modificado, podríamos interpolar.
             # Simple override is safer for now based on user request "todo hay".
             
-        # 2. Else, build from Active Agent components (Role, Objective, Tone, Knowledge)
-        elif config.get('role') or config.get('knowledge'):
+        # 2. Else, build from Active Agent systemPrompt + role
+        elif config.get('role'):
             role = config.get('role', 'Asistente Virtual')
-            objective = config.get('objective', 'Ayudar al usuario')
-            tone = config.get('tone', 'Amigable')
-            knowledge = config.get('knowledge', '')
             
-            # Unir BASE + Dynamic
             from app.base_prompt import BASE_SYSTEM_PROMPT
-            dynamic_prompt = f"{BASE_SYSTEM_PROMPT}\n\n# CONFIGURACIÓN ESPECÍFICA DEL AGENTE\nRol: {role}\nObjetivo: {objective}\nTono: {tone}\nConocimiento: {knowledge}"
-            print(f"🤖 [Sessions] Usando configuración de Agente Activo para {member_id}")
+            dynamic_prompt = f"{BASE_SYSTEM_PROMPT}\n\n# CONFIGURACIÓN ESPECÍFICA DEL AGENTE\nRol: {role}"
+            print(f"🤖 [Sessions] Usando configuración de Agente Activo para {tenant_id}")
             
         else:
             # Fallback to local base
@@ -126,7 +123,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
         dynamic_prompt = await get_system_prompt()
         ai_model = os.getenv("AI_MODEL", "gpt-4o")
         ai_temp = float(os.getenv("AI_TEMPERATURE", "0.2"))
-        print(f"⚠️ [Sessions] No se encontró config para {member_id}, usando local.")
+        print(f"⚠️ [Sessions] No se encontró config para {tenant_id}, usando local.")
     
     instruction = dynamic_prompt
     if history_seed:
@@ -135,9 +132,9 @@ async def create_new_session(chat_id: str) -> AgentSession:
     bot_name = os.getenv("BOT_NAME", "travel_assistant")
     agent_version = os.getenv("AGENT_VERSION", "1.0.0")
 
-    # Propagar member_id al entorno para que el servidor MCP (stdio) lo herede si se inicia ahora
-    if member_id:
-        os.environ["BITRIX_MEMBER_ID"] = member_id
+    # Propagar tenant_id (env var sigue siendo BITRIX_MEMBER_ID por compatibilidad) al entorno
+    if tenant_id:
+        os.environ["BITRIX_MEMBER_ID"] = tenant_id
 
     travel_agent = Agent(
         name=f"{bot_name}_v{agent_version}_{chat_id}",

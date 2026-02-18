@@ -14,6 +14,7 @@ paths:
       operationId: chat
       x-google-backend:
         address: REPLACE_WITH_CLOUD_RUN_URL # SED_REPLACE_TARGET
+        path_translation: CONSTANT_ADDRESS
         protocol: h2
       responses:
         '200':
@@ -26,6 +27,7 @@ paths:
       operationId: health
       x-google-backend:
         address: REPLACE_WITH_CLOUD_RUN_URL # SED_REPLACE_TARGET
+        path_translation: CONSTANT_ADDRESS
         protocol: h2
       responses:
         '200':
