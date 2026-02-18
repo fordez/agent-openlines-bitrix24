@@ -8,6 +8,8 @@ ENV PYTHONUNBUFFERED=1
 # Instalar Redis y dependencias básicas
 RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-server \
+    redis-tools \
+    procps \
     && rm -rf /var/lib/apt/lists/*
 
 # Copiar e instalar dependencias Python

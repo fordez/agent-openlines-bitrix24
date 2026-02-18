@@ -5,14 +5,22 @@ set -e
 echo "Iniciando Redis Server..."
 redis-server --daemonize yes
 
-# Esperar a que Redis inicie (opcional, pero recomendado)
-sleep 1
+# Esperar a que Redis inicie (con reintentos)
+echo "Esperando a Redis..."
+for i in {1..5}; do
+    if redis-cli ping > /dev/null 2>&1; then
+        echo "✅ Redis iniciado correctamente."
+        break
+    fi
+    echo "⏳ Esperando Redis ($i/5)..."
+    sleep 1
+done
 
-# Verificar si Redis está corriendo
-if pgrep "redis-server" > /dev/null; then
-    echo "Redis iniciado correctamente."
-else
-    echo "Error al iniciar Redis."
+# Verificación final
+if ! redis-cli ping > /dev/null 2>&1; then
+    echo "❌ Error: Redis no respondió al ping."
+    # Mostrar logs de redis si es posible (en stdout)
+    cat /var/log/redis/redis-server.log || echo "No log defined."
     exit 1
 fi
 
