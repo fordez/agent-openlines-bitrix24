@@ -11,8 +11,8 @@ from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
 from app.context import app, MCP_SERVER_NAME, TRAVEL_SERVER_NAME
-from app.prompts import SYSTEM_PROMPT
-from app.memory import format_history_str
+from app.firestore_config import get_firestore_config
+from app.memory import format_history_str, clear_chat_history
 from app.redis_client import get_redis
 
 SESSION_TTL_SECONDS = 30 * 60  # 30 minutos
@@ -57,13 +57,18 @@ async def cleanup_expired_sessions():
             if session:
                 try:
                     await session.agent.__aexit__(None, None, None)
-                except Exception:
-                    pass
+                    # Limpiar Redis al terminar sesión (según requerimiento user)
+                    await clear_chat_history(cid)
+                except Exception as e:
+                    print(f"  ⚠️ Error cerrando sesión {cid}: {e}")
                 print(f"  🧹 Sesión expirada limpiada para chat {cid}")
 
 
 async def create_new_session(chat_id: str) -> AgentSession:
     """Crea una nueva sesión de agente para un chat_id."""
+    # Limpiar Redis al iniciar sesión (según requerimiento user: "cuando inicia o finaliza")
+    await clear_chat_history(chat_id)
+    
     # AI config ahora vive en .env
     llm_provider = os.getenv("LLM_PROVIDER", "google").lower()
 
@@ -72,12 +77,67 @@ async def create_new_session(chat_id: str) -> AgentSession:
     # pero aquí podemos forzar la lógica de proveedor.
 
     history_seed = await format_history_str(chat_id)
-    instruction = SYSTEM_PROMPT
+    
+
+
+    # Nuevo: Cargar configuración desde Firestore (con caché en Redis)
+    from app.prompts import _DEFAULT_SYSTEM_PROMPT
+    
+    fs_service = await get_firestore_config()
+    # Obtenemos el member_id del entorno (seteado en main.py al recibir el evento)
+    member_id = os.getenv("BITRIX_MEMBER_ID")
+    config = await fs_service.get_tenant_config(member_id) if member_id else None
+    
+    if config:
+        # 1. Check for explicit 'systemPrompt' (from config-architect or custom agent field)
+        # This allows the Dashboard to fully control the prompt (overriding the codebase default)
+        if config.get('systemPrompt'):
+            dynamic_prompt = config.get('systemPrompt')
+            print(f"📜 [Sessions] Usando System Prompt raw desde Firestore para {member_id}")
+            
+            # Optional: Si también hay variables de agente activo, las anexamos?
+            # Por ahora, asumimos que si hay systemPrompt, es AUTOSIFICIENTE O INCLUYE VARIABLES.
+            # Pero para soportar "Knowledge" dinámico + "System Prompt" base modificado, podríamos interpolar.
+            # Simple override is safer for now based on user request "todo hay".
+            
+        # 2. Else, build from Active Agent components (Role, Objective, Tone, Knowledge)
+        elif config.get('role') or config.get('knowledge'):
+            role = config.get('role', 'Asistente Virtual')
+            objective = config.get('objective', 'Ayudar al usuario')
+            tone = config.get('tone', 'Amigable')
+            knowledge = config.get('knowledge', '')
+            
+            # Unir BASE + Dynamic
+            from app.base_prompt import BASE_SYSTEM_PROMPT
+            dynamic_prompt = f"{BASE_SYSTEM_PROMPT}\n\n# CONFIGURACIÓN ESPECÍFICA DEL AGENTE\nRol: {role}\nObjetivo: {objective}\nTono: {tone}\nConocimiento: {knowledge}"
+            print(f"🤖 [Sessions] Usando configuración de Agente Activo para {member_id}")
+            
+        else:
+            # Fallback to local base
+            from app.prompts import _DEFAULT_SYSTEM_PROMPT
+            dynamic_prompt = _DEFAULT_SYSTEM_PROMPT
+            print(f"⚠️ [Sessions] Config encontrada pero sin prompt/agente. Usando default local.")
+
+        ai_model = config.get('model', os.getenv("AI_MODEL", "gpt-4o"))
+        ai_temp = float(config.get('temperature', os.getenv("AI_TEMPERATURE", "0.2")))
+        print(f"🎨 [Sessions] Modelo aplicado: {ai_model}")
+    else:
+        from app.prompts import get_system_prompt
+        dynamic_prompt = await get_system_prompt()
+        ai_model = os.getenv("AI_MODEL", "gpt-4o")
+        ai_temp = float(os.getenv("AI_TEMPERATURE", "0.2"))
+        print(f"⚠️ [Sessions] No se encontró config para {member_id}, usando local.")
+    
+    instruction = dynamic_prompt
     if history_seed:
-        instruction = f"{SYSTEM_PROMPT}\n\n{history_seed}"
+        instruction = f"{dynamic_prompt}\n\n{history_seed}"
 
     bot_name = os.getenv("BOT_NAME", "travel_assistant")
     agent_version = os.getenv("AGENT_VERSION", "1.0.0")
+
+    # Propagar member_id al entorno para que el servidor MCP (stdio) lo herede si se inicia ahora
+    if member_id:
+        os.environ["BITRIX_MEMBER_ID"] = member_id
 
     travel_agent = Agent(
         name=f"{bot_name}_v{agent_version}_{chat_id}",
@@ -86,29 +146,40 @@ async def create_new_session(chat_id: str) -> AgentSession:
     )
 
     agent_app = await app.run().__aenter__()
-
-
-
     await travel_agent.__aenter__()
 
-    ai_model = os.getenv("AI_MODEL")
-    ai_temp = float(os.getenv("AI_TEMPERATURE", "0.2"))
-    ai_max_tokens = int(os.getenv("AI_MAX_TOKENS", "1024"))
+    # Configurar modelo por defecto en variables de entorno para que MCP Agent lo tome
+    if ai_model:
+        os.environ["OPENAI_DEFAULT_MODEL"] = ai_model
+        # os.environ["GOOGLE_DEFAULT_MODEL"] = ai_model # Google adapter might use different env var or specific kwarg
+
+    
+    # Extraer API Key del config (si existe)
+    api_key = None
+    if config:
+        # Override Provider if set in Agent
+        if config.get("provider"):
+            llm_provider = config.get("provider").lower()
+            print(f"🔄 [Sessions] Provider cambiado por Agente: {llm_provider}")
+
+        if llm_provider == "openai":
+            api_key = config.get("openaiApiKey")
+        elif llm_provider == "google":
+            api_key = config.get("googleApiKey")
+
+    # Pass model and temperature explicitly to override defaults
+    llm_kwargs = {
+        "api_key": api_key,
+        "model": ai_model,
+        "temperature": ai_temp
+    }
+    
+    print(f"🔌 [Sessions] Attaching LLM ({llm_provider}): {ai_model} (T={ai_temp})")
 
     if llm_provider == "openai":
-        llm = await travel_agent.attach_llm(
-            OpenAIAugmentedLLM, 
-            model_name=ai_model,
-            temperature=ai_temp,
-            max_tokens=ai_max_tokens
-        )
+        llm = await travel_agent.attach_llm(OpenAIAugmentedLLM, **llm_kwargs)
     else:
-        llm = await travel_agent.attach_llm(
-            GoogleAugmentedLLM,
-            model_name=ai_model,
-            temperature=ai_temp,
-            max_tokens=ai_max_tokens
-        )
+        llm = await travel_agent.attach_llm(GoogleAugmentedLLM, **llm_kwargs)
 
     session = AgentSession(
         agent=travel_agent,
@@ -116,7 +187,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
         agent_app=agent_app,
     )
 
-    print(f"  🆕 Nueva sesión creada para chat {chat_id} (provider: {llm_provider}, source: agent_config.json)")
+    print(f"  🆕 Nueva sesión creada para chat {chat_id} (provider: {llm_provider})")
     return session
 
 

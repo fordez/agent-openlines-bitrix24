@@ -98,19 +98,12 @@ GOOGLE_API_KEY=xxx
 OPENAI_API_KEY=xxx
 
 # Redis
-REDIS_URL=redis://redis:6379/0
+REDIS_URL=redis://localhost:6379/0
 ```
 
-### 🐳 Despliegue con Docker
-La forma recomendada es usar el orquestador incluido:
-
-```bash
-# 1. Construir e iniciar servicios
-docker compose up -d --build
-
-# 2. Ver logs del bot
-docker compose logs -f bot
-```
+### 🐳 Despliegue en Google Cloud Run
+Para desplegar en Cloud Run con Redis embebido:
+[Ver guía de despliegue en Cloud Run](./DEPLOY_CLOUDRUN.md)
 
 ---
 

@@ -181,22 +181,21 @@ async def manage_lead(name: str = None, phone: str = None, email: str = None,
                         }
 
                 if chat_metadata.get("SESSION_ID"):
-                    await call_bitrix_method("crm.activity.add", {
-                        "fields": {
-                            "OWNER_ID": final_lead_id,
-                            "OWNER_TYPE_ID": 1, # Lead
-                            "TYPE_ID": 6,       # IM
-                            "PROVIDER_ID": "IMOPENLINES_SESSION",
-                            "PROVIDER_TYPE_ID": chat_metadata["LINE_ID"],
-                            "ASSOCIATED_ENTITY_ID": chat_metadata["SESSION_ID"],
-                            "SUBJECT": f"Sesión de Chat (Canal Abierto)",
-                            "COMPLETED": "Y",
-                            "DIRECTION": 1,
-                            "ORIGIN_ID": f"IMOL_{chat_metadata['SESSION_ID']}",
-                            "PROVIDER_PARAMS": {"USER_CODE": chat_metadata["USER_CODE"]}
-                        }
-                    })
-                    sys.stderr.write(f"  ⛓️ Actividad de sesión vinculada.\n")
+                    activity_fields = {
+                        "OWNER_ID": final_lead_id,
+                        "OWNER_TYPE_ID": 1, # Lead
+                        "TYPE_ID": 6,       # IM
+                        "PROVIDER_ID": "IMOPENLINES_SESSION",
+                        "PROVIDER_TYPE_ID": chat_metadata["LINE_ID"],
+                        "ASSOCIATED_ENTITY_ID": chat_metadata["SESSION_ID"],
+                        "SUBJECT": f"Sesión de Chat (Canal Abierto)",
+                        "COMPLETED": "Y",
+                        "DIRECTION": 1,
+                        "ORIGIN_ID": f"IMOL_{chat_metadata['SESSION_ID']}",
+                        "PROVIDER_PARAMS": {"USER_CODE": chat_metadata["USER_CODE"]}
+                    }
+                    await call_bitrix_method("crm.activity.add", {"fields": activity_fields})
+                    sys.stderr.write(f"  ⛓️ Actividad de sesión vinculada (Lead {final_lead_id}).\n")
             except Exception as e:
                 sys.stderr.write(f"  ⚠️ Error creando actividad de vínculo: {e}\n")
 

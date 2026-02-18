@@ -24,11 +24,56 @@ sys.stderr.write(f"🔧 MCP Server REDIS_URL: {os.getenv('REDIS_URL')}\n")
 sys.stderr.write(f"🔧 MCP Server BITRIX_DOMAIN: {os.getenv('BITRIX_DOMAIN')}\n")
 
 from mcp.server.fastmcp import FastMCP
+from app.models import (
+    CRMNoteRequest, CalendarEventCreateRequest,
+    CalendarEventUpdateRequest, TaskCreateRequest, CRMActivityAddRequest,
+    DriveResolveWorkspaceRequest, DocumentGenerateRequest, SessionTransferRequest,
+    DriveFileUploadRequest, CatalogProductSearchRequest, CatalogProductListRequest,
+    DealAddProductsRequest, NotifyAdvisorRequest, ChatProgressRequest,
+    ManageLeadRequest, LeadConvertRequest, EnrichmentFields
+)
+from app.metrics import MetricsService
+import time
+import functools
+
+def track_tool_usage(func):
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        start_time = time.time()
+        success = True
+        try:
+            return await func(*args, **kwargs)
+        except Exception:
+            success = False
+            raise
+        finally:
+            duration = (time.time() - start_time) * 1000
+            try:
+                ms = await MetricsService.get_instance()
+                from app.context_vars import member_id_var
+                tenant = member_id_var.get() or "unknown"
+                await ms.log_tool_usage(tenant, func.__name__, success, duration)
+            except Exception as e:
+                sys.stderr.write(f"⚠️ Metrics error: {e}\n")
+    return wrapper
 
 # ─── Inicializar servidor ─────────────────────────────────────────
 mcp = FastMCP(
     name="bitrix_crm",
 )
+
+async def _set_context(chat_id=None):
+    """Establece el contexto de tenant (member_id) para la ejecución actual."""
+    if chat_id:
+        from app.token_manager import get_token_manager
+        tm = await get_token_manager()
+        m_id = await tm.get_member_id_from_chat(chat_id)
+        if m_id:
+            from app.context_vars import member_id_var
+            member_id_var.set(m_id)
+            # También poner en os.environ para tools legacy que usen os.getenv
+            os.environ["BITRIX_MEMBER_ID"] = m_id
+            sys.stderr.write(f"🌐 Contexto establecido para chat {chat_id}: {m_id}\n")
 
 # ═══════════════════════════════════════════════════════════════════
 # TOOLS — Funciones de acción que modifican o consultan Bitrix24
@@ -38,24 +83,25 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-async def manage_lead(name: str = None, phone: str = None, email: str = None, title: str = None, chat_id: int = None, source_id: str = "WEB", comments: str = None) -> str:
-    """Usa esta tool PRINCIPAL para GESTIONAR LEADS. 
-    Es INTELIGENTE: Busca duplicados por teléfono/email. Si existe, lo actualiza. Si no, crea uno nuevo.
-    Siempre úsala cuando tengas datos del cliente."""
+@track_tool_usage
+async def manage_lead(req: ManageLeadRequest) -> str:
+    """Gestiona LEADS de forma inteligente: Busca duplicados, actualiza o crea."""
     try:
+        await _set_context(req.chat_id)
         from tools.crm.manage_lead import manage_lead as _fn
-        return await _fn(name=name, phone=phone, email=email, title=title, chat_id=chat_id, source_id=source_id, comments=comments)
+        return await _fn(**req.model_dump(exclude_unset=True))
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en manage_lead: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en manage_lead: {e}"
 
 @mcp.tool()
-async def crm_add_note(entity_id: int, entity_type: str, message: str) -> str:
-    """Usa esta tool para AGREGAR UNA NOTA o comentario (ej: calificación del lead, intereses, score, resumen) a cualquier Lead, Contacto o Negocio en el CRM."""
+@track_tool_usage
+async def crm_add_note(req: CRMNoteRequest) -> str:
+    """Añade una NOTA (calificación, intereses, score) a Lead, Contacto o Negocio."""
     try:
         from tools.crm.crm_add_note import crm_add_note as _fn
-        return await _fn(entity_id=entity_id, entity_type=entity_type, message=message)
+        return await _fn(**req.model_dump())
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en crm_add_note: {e}\n{traceback.format_exc()}\n")
@@ -64,6 +110,7 @@ async def crm_add_note(entity_id: int, entity_type: str, message: str) -> str:
 
 
 @mcp.tool()
+@track_tool_usage
 async def lead_get(lead_id: int) -> str:
     """Usa esta tool para LEER toda la información detallada de un Lead específico."""
     try:
@@ -75,34 +122,50 @@ async def lead_get(lead_id: int) -> str:
         return f"Error técnico en lead_get: {e}"
 
 @mcp.tool()
-async def lead_convert(lead_id: int, deal_category_id: int = 0, chat_id: int = None, create_deal: bool = True, create_contact: bool = True, create_company: bool = False) -> str:
-    """CONVIERTE un Lead en Deal (Negocio), Contacto y/o Empresa.
-    Usa los flags (create_deal, create_contact, create_company) para decidir qué entidades crear.
-    Ej: Para solo crear contacto: create_deal=False, create_contact=True."""
+@track_tool_usage
+async def lead_convert(req: LeadConvertRequest) -> str:
+    """CONVIERTE Lead en Negocio, Contacto y/o Empresa."""
     try:
+        await _set_context(req.chat_id)
         from tools.crm.lead_convert import lead_convert as _fn
-        return await _fn(lead_id=lead_id, deal_category_id=deal_category_id, chat_id=chat_id, create_deal=create_deal, create_contact=create_contact, create_company=create_company)
+        return await _fn(**req.model_dump(exclude_unset=True))
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en lead_convert: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en lead_convert: {e}"
 
 @mcp.tool()
-async def enrich_entity(entity_id: int, entity_type: str, fields: dict) -> str:
-    """Usa esta tool para ENRIQUECER cualquier entidad (LEAD, CONTACT, DEAL) con datos inteligentes 
-    como origen del canal, comentarios detallados o campos personalizados una vez creada la ficha."""
+@track_tool_usage
+async def enrich_entity(entity_id: int, entity_type: str, fields: EnrichmentFields) -> str:
+    """Enriquece Lead/Deal con datos adicionales. Permite campos personalizados UF_CRM_*."""
     try:
         from tools.crm.enrich_entity import enrich_entity as _fn
-        return await _fn(entity_id=entity_id, entity_type=entity_type, fields=fields)
+        # Pasamos el dict original (con los campos extra) a la tool
+        all_fields = fields.model_dump(exclude_unset=True)
+        all_fields.update(fields.model_extra or {})
+        return await _fn(entity_id=entity_id, entity_type=entity_type, fields=all_fields)
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en enrich_entity: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en enrich_entity: {e}"
+@mcp.tool()
+@track_tool_usage
+async def lead_qualify(lead_id: int) -> str:
+    """Usa esta tool para CALIFICAR y AVANZAR un Lead en el embudo.
+    Evalúa si tiene datos suficientes para pasar de 'NEW' a 'IDENTIFICACIÓN' o 'ASIGNACIÓN'."""
+    try:
+        from tools.crm.lead_qualify import lead_qualify as _fn
+        return await _fn(lead_id=lead_id)
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en lead_qualify: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en lead_qualify: {e}"
 
 
 # ─── CRM / Contacts ──────────────────────────────────────────────
 
 @mcp.tool()
+@track_tool_usage
 async def contact_get(contact_id: int) -> str:
     """Usa esta tool para LEER toda la información detallada de un Contacto específico."""
     try:
@@ -117,6 +180,7 @@ async def contact_get(contact_id: int) -> str:
 # ─── CRM / Deals ──────────────────────────────────────────────────
 
 @mcp.tool()
+@track_tool_usage
 async def deal_get(deal_id: int) -> str:
     """Usa esta tool para LEER toda la información detallada de un Deal específico (Monto, etapa, cliente asignado, etc)."""
     try:
@@ -128,6 +192,7 @@ async def deal_get(deal_id: int) -> str:
         return f"Error técnico en deal_get: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def deal_list(filter_status: str = None, limit: int = 10) -> str:
     """Usa esta tool para LISTAR Deals activos, filtrados por etapa si es necesario."""
     try:
@@ -140,6 +205,7 @@ async def deal_list(filter_status: str = None, limit: int = 10) -> str:
 
 
 @mcp.tool()
+@track_tool_usage
 async def deal_move_stage(deal_id: int, stage_id: str) -> str:
     """Usa esta tool para MOVER el Deal a una nueva etapa (ej: 'NEW', 'PREPARATION', 'PREPAYMENT')."""
     try:
@@ -151,17 +217,7 @@ async def deal_move_stage(deal_id: int, stage_id: str) -> str:
         return f"Error técnico en deal_move_stage: {e}"
 
 @mcp.tool()
-async def deal_mark_closed(deal_id: int, status: str, comment: str = None) -> str:
-    """Usa esta tool para CERRAR el negocio. status='WON' para Ganado, status='LOST' para Perdido. Puedes añadir un motivo en comment."""
-    try:
-        from tools.deal.deal_mark_closed import deal_mark_closed as _fn
-        return await _fn(deal_id=deal_id, status=status, comment=comment)
-    except Exception as e:
-        import traceback
-        sys.stderr.write(f"  ❌ Error en deal_mark_closed: {e}\n{traceback.format_exc()}\n")
-        return f"Error técnico en deal_mark_closed: {e}"
-
-@mcp.tool()
+@track_tool_usage
 async def company_get(company_id: int) -> str:
     """Usa esta tool para LEER toda la información detallada de una Empresa específica."""
     try:
@@ -175,6 +231,7 @@ async def company_get(company_id: int) -> str:
 # ─── CRM / Metadata ───────────────────────────────────────────────
 
 @mcp.tool()
+@track_tool_usage
 async def crm_fields_get(entity_type: str) -> str:
     """Usa esta tool para ver el ESQUEMA de campos (nombres técnicos y etiquetas) de una entidad (LEAD, DEAL, CONTACT, COMPANY)."""
     try:
@@ -186,6 +243,7 @@ async def crm_fields_get(entity_type: str) -> str:
         return f"Error técnico en crm_fields_get: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def crm_stages_list(entity_type: str = "DEAL") -> str:
     """Usa esta tool para ver las ETAPAS o estados disponibles para una entidad (LEAD o DEAL)."""
     try:
@@ -199,12 +257,14 @@ async def crm_stages_list(entity_type: str = "DEAL") -> str:
 # ─── Calendar ─────────────────────────────────────────────────────
 
 @mcp.tool()
+@track_tool_usage
 async def calendar_event_list(from_date: str = None, to_date: str = None) -> str:
     """Usa esta tool para LEER LA AGENDA y saber qué reuniones hay programadas en un rango."""
     from tools.calendar.calendar_event_list import calendar_event_list as _fn
     return await _fn(from_date=from_date, to_date=to_date)
 
 @mcp.tool()
+@track_tool_usage
 async def calendar_availability_check(start_time: str, end_time: str) -> str:
     """Usa esta tool para VERIFICAR DISPONIBILIDAD antes de agendar. Retorna si el horario está libre u ocupado."""
     try:
@@ -216,28 +276,31 @@ async def calendar_availability_check(start_time: str, end_time: str) -> str:
         return f"Error técnico en calendar_availability_check: {e}"
 
 @mcp.tool()
-async def calendar_event_create(title: str, start_time: str, end_time: str, description: str = "", remind_mins: int = 60, section_id: int = 0) -> str:
-    """Usa esta tool para AGENDAR una cita. Proporciona remind_mins para recordatorio y section_id para elegir el calendario."""
+@track_tool_usage
+async def calendar_event_create(req: CalendarEventCreateRequest) -> str:
+    """Crea cita en el calendario. TÍTULO: '[Destino] - [Nombre]'."""
     try:
         from tools.calendar.calendar_event_create import calendar_event_create as _fn
-        return await _fn(title=title, start_time=start_time, end_time=end_time, description=description, remind_mins=remind_mins, section_id=section_id)
+        return await _fn(**req.model_dump())
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en calendar_event_create: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en calendar_event_create: {e}"
 
 @mcp.tool()
-async def calendar_event_update(event_id: int, title: str = None, start_time: str = None, end_time: str = None, description: str = None, remind_mins: int = None) -> str:
-    """Usa esta tool para MODIFICAR o REPROGRAMAR una reunión existente."""
+@track_tool_usage
+async def calendar_event_update(req: CalendarEventUpdateRequest) -> str:
+    """MODIFICA o REPROGRAMA una reunión existente."""
     try:
         from tools.calendar.calendar_event_update import calendar_event_update as _fn
-        return await _fn(event_id=event_id, title=title, start_time=start_time, end_time=end_time, description=description, remind_mins=remind_mins)
+        return await _fn(**req.model_dump(exclude_unset=True))
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en calendar_event_update: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en calendar_event_update: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def calendar_event_delete(event_id: int) -> str:
     """Usa esta tool para CANCELAR/BORRAR una reunión."""
     try:
@@ -249,6 +312,7 @@ async def calendar_event_delete(event_id: int) -> str:
         return f"Error técnico en calendar_event_delete: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def calendar_event_get(event_id: int) -> str:
     """Usa esta tool para LEER todos los detalles de una cita específica en el calendario."""
     try:
@@ -262,41 +326,51 @@ async def calendar_event_get(event_id: int) -> str:
 # ─── Catalog / Products ──────────────────────────────────────────
 
 @mcp.tool()
-async def catalog_product_list(section_id: int) -> str:
-    """Usa esta tool para LISTAR PRODUCTOS dentro de una categoría/sección específica."""
+@track_tool_usage
+async def catalog_product_list(req: CatalogProductListRequest) -> str:
+    """LISTAR PRODUCTOS dentro de una categoría específica."""
     try:
         from tools.catalog.catalog_product_list import catalog_product_list as _fn
-        return await _fn(section_id=section_id)
+        return await _fn(**req.model_dump())
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en catalog_product_list: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en catalog_product_list: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def catalog_product_get(product_id: int) -> str:
     """Usa esta tool para ver DETALLES COMPLETOS de un producto específico por ID."""
     from tools.catalog.catalog_product_get import catalog_product_get as _fn
     return await _fn(product_id=product_id)
 
 @mcp.tool()
-async def catalog_product_search(name: str) -> str:
-    """Usa esta tool para BUSCAR PRODUCTOS por nombre o palabra clave."""
+@track_tool_usage
+async def catalog_product_search(req: CatalogProductSearchRequest) -> str:
+    """BUSCAR PRODUCTOS por nombre o palabra clave."""
     try:
         from tools.catalog.catalog_product_search import catalog_product_search as _fn
-        return await _fn(name=name)
+        return await _fn(**req.model_dump())
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en catalog_product_search: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en catalog_product_search: {e}"
 
 @mcp.tool()
-async def deal_add_products(deal_id: int, products: list) -> str:
-    """Usa esta tool para AGREGAR PRODUCTOS a un Deal existente."""
-    from tools.catalog.deal_add_products import deal_add_products as _fn
-    return await _fn(deal_id=deal_id, products=products)
+@track_tool_usage
+async def deal_add_products(req: DealAddProductsRequest) -> str:
+    """AGREGAR PRODUCTOS a un Deal existente."""
+    try:
+        from tools.catalog.deal_add_products import deal_add_products as _fn
+        return await _fn(**req.model_dump())
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en deal_add_products: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en deal_add_products: {e}"
 
 
 @mcp.tool()
+@track_tool_usage
 async def deal_remove_product(row_id: int) -> str:
     """Usa esta tool para ELIMINAR un producto de un Deal."""
     from tools.catalog.deal_remove_product import deal_remove_product as _fn
@@ -305,18 +379,26 @@ async def deal_remove_product(row_id: int) -> str:
 # ─── Document ─────────────────────────────────────────────────────
 
 @mcp.tool()
-async def document_generate(template_id: int, entity_id: int, entity_type_id: int = 2) -> str:
-    """Usa esta tool para GENERAR un documento (contrato, cotización) basado en una plantilla y una entidad CRM."""
-    from tools.document.document_generate import document_generate as _fn
-    return await _fn(template_id=template_id, entity_id=entity_id, entity_type_id=entity_type_id)
+@track_tool_usage
+async def document_generate(req: DocumentGenerateRequest) -> str:
+    """GENERA documento (contrato, cotización) basado en plantilla."""
+    try:
+        from tools.document.document_generate import document_generate as _fn
+        return await _fn(**req.model_dump())
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en document_generate: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en document_generate: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def document_list(entity_id: int, entity_type_id: int = 2) -> str:
     """Usa esta tool para VER qué documentos ya fueron generados para un Lead o Deal."""
     from tools.document.document_list import document_list as _fn
     return await _fn(entity_id=entity_id, entity_type_id=entity_type_id)
 
 @mcp.tool()
+@track_tool_usage
 async def document_download(document_id: int) -> str:
     """Usa esta tool para DESCARGAR un documento ya generado y obtener su URL."""
     from tools.document.document_download import document_download as _fn
@@ -325,31 +407,45 @@ async def document_download(document_id: int) -> str:
 # ─── Drive ────────────────────────────────────────────────────────
 
 @mcp.tool()
-async def drive_resolve_workspace(entity_id: int, entity_type: str, entity_name: str = "Cliente") -> str:
-    """PRINCIPAL: Resuelve o crea la carpeta de trabajo específica para el cliente actual.
-    Sigue la regla de 'Dominio de la Identidad': Todo archivo debe vivir en esta carpeta."""
-    from tools.drive.drive_resolve_workspace import drive_resolve_workspace as _fn
-    return await _fn(entity_id=entity_id, entity_type=entity_type, entity_name=entity_name)
+@track_tool_usage
+async def drive_resolve_workspace(req: DriveResolveWorkspaceRequest) -> str:
+    """Resuelve o crea carpeta de trabajo para el cliente."""
+    try:
+        from tools.drive.drive_resolve_workspace import drive_resolve_workspace as _fn
+        return await _fn(**req.model_dump())
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en drive_resolve_workspace: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en drive_resolve_workspace: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def drive_folder_create(name: str, parent_id: int = None) -> str:
     """Usa esta tool para CREAR una nueva carpeta en Bitrix24 Drive."""
     from tools.drive.drive_folder_create import drive_folder_create as _fn
     return await _fn(name=name, parent_id=parent_id)
 
 @mcp.tool()
-async def drive_file_upload(folder_id: int, file_name: str, file_content_base64: str) -> str:
-    """Usa esta tool para SUBIR un archivo al Drive de Bitrix24."""
-    from tools.drive.drive_file_upload import drive_file_upload as _fn
-    return await _fn(folder_id=folder_id, file_name=file_name, file_content_base64=file_content_base64)
+@track_tool_usage
+async def drive_file_upload(req: DriveFileUploadRequest) -> str:
+    """SUBIR un archivo al Drive de Bitrix24."""
+    try:
+        from tools.drive.drive_file_upload import drive_file_upload as _fn
+        return await _fn(**req.model_dump())
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en drive_file_upload: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en drive_file_upload: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def drive_file_list(folder_id: int) -> str:
     """Usa esta tool para VER los archivos dentro de una carpeta del Drive."""
     from tools.drive.drive_file_list import drive_file_list as _fn
     return await _fn(folder_id=folder_id)
 
 @mcp.tool()
+@track_tool_usage
 async def drive_file_download(file_id: int) -> str:
     """Usa esta tool para DESCARGAR un archivo del Drive y obtener su URL."""
     from tools.drive.drive_file_download import drive_file_download as _fn
@@ -358,6 +454,7 @@ async def drive_file_download(file_id: int) -> str:
 # ─── Followup ─────────────────────────────────────────────────────
 
 @mcp.tool()
+@track_tool_usage
 async def lead_reactivate_by_client(lead_id: int) -> str:
     """Usa esta tool cuando un cliente con Lead anterior vuelve a escribir. Reactiva el Lead cambiando su STATUS_ID."""
     try:
@@ -369,6 +466,7 @@ async def lead_reactivate_by_client(lead_id: int) -> str:
         return f"Error técnico en lead_reactivate_by_client: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def deal_update_probability_client(deal_id: int, probability: int) -> str:
     """Usa esta tool para ACTUALIZAR la probabilidad de cierre de un Deal (0-100)."""
     try:
@@ -383,38 +481,73 @@ async def deal_update_probability_client(deal_id: int, probability: int) -> str:
 
 
 @mcp.tool()
-async def session_transfer(chat_id: int, user_id: int = None) -> str:
-    """Usa esta tool para TRANSFERIR la conversación a un HUMANO cuando la situación se complique."""
+@track_tool_usage
+async def session_transfer(req: SessionTransferRequest) -> str:
+    """TRANSFERIR conversación a HUMANO (user_id o cola)."""
     try:
+        await _set_context(req.chat_id)
         from tools.openlines.session_transfer import session_transfer as _fn
-        return await _fn(chat_id=chat_id, user_id=user_id)
+        return await _fn(**req.model_dump(exclude_unset=True))
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en session_transfer: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en session_transfer: {e}"
 
 @mcp.tool()
+@track_tool_usage
+async def chat_send_progress(req: ChatProgressRequest) -> str:
+    """Envía un mensaje de CORTESÍA o PROGRESO al cliente (ej: 'Dame un momento mientras...')"""
+    try:
+        await _set_context(req.chat_id)
+        from tools.openlines.chat_send_progress import chat_send_progress as _fn
+        return await _fn(**req.model_dump())
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en chat_send_progress: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en chat_send_progress: {e}"
+
+@mcp.tool()
+@track_tool_usage
+async def advisor_notify(req: NotifyAdvisorRequest) -> str:
+    """Envía una NOTIFICACIÓN directa a un asesor (pop-up en Bitrix24)."""
+    try:
+        from tools.openlines.advisor_notify import advisor_notify as _fn
+        return await _fn(**req.model_dump())
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en advisor_notify: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en advisor_notify: {e}"
+
+@mcp.prompt()
+async def data_elicitation_strategy(missing_field: str, operation: str = "gestión") -> str:
+    """Guía: Cómo pedir datos faltantes (Elicitación) con un tono profesional y servicial."""
+    return f"""INSTRUCCIÓN: Elicitación de Datos Proactiva
+    
+Si necesitas el campo '{missing_field}' para completar la {operation}:
+
+1. **Informa con cortesía**: Explica brevemente por qué es necesario (ej: "Para poder procesar tu cotización..." o "Para asegurar tu lugar en la reunión...").
+2. **Pide el dato**: Haz la pregunta de forma clara y directa.
+3. **Mantén el flujo**: Asegura al cliente que una vez proporcione el dato, terminarás el proceso de inmediato.
+
+Ejemplo: "¡Excelente! Para poder generar tu cotización formal ahora mismo, solo necesito que me confirmes tu correo electrónico. ¿Podrías proporcionármelo?"
+"""
+
+@mcp.tool()
+@track_tool_usage
 async def session_finish(chat_id: int) -> str:
     """Usa esta tool para CERRAR la sesión de chat cuando la conversación haya terminado."""
+    await _set_context(chat_id)
     from tools.openlines.session_finish import session_finish as _fn
     return await _fn(chat_id=chat_id)
 
-@mcp.tool()
-async def session_title_update(chat_id: int, title: str) -> str:
-    """Usa esta tool para ACTUALIZAR EL TÍTULO de la conversación en Bitrix24. Hazlo en cuanto identifiques el tema del viaje (ej: 'Planificación China') para que no aparezca como 'sin title'."""
-    try:
-        from tools.openlines.session_title_update import session_title_update as _fn
-        return await _fn(chat_id=chat_id, title=title)
-    except Exception as e:
-        import traceback
-        sys.stderr.write(f"  ❌ Error en session_title_update: {e}\n{traceback.format_exc()}\n")
-        return f"Error técnico en session_title_update: {e}"
 
 
 @mcp.tool()
+@track_tool_usage
 async def session_crm_get(chat_id: int) -> str:
     """Usa esta tool para VERIFICAR si ya existe un Lead vinculado a la sesión actual ANTES de crear uno nuevo."""
     try:
+        await _set_context(chat_id)
         from tools.openlines.session_crm_get import session_crm_get as _fn
         return await _fn(chat_id=chat_id)
     except Exception as e:
@@ -423,18 +556,21 @@ async def session_crm_get(chat_id: int) -> str:
         return f"Error técnico en session_crm_get: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def session_operator_list(config_id: int = 1) -> str:
     """Lista los operadores ONLINE de la línea abierta. Úsalo ANTES de transferir para saber si hay alguien disponible."""
     from tools.openlines.session_operator_list import session_operator_list as _fn
     return await _fn(config_id=config_id)
 
 @mcp.tool()
+@track_tool_usage
 async def session_queue_info(config_id: int = 1) -> str:
     """Consulta la config de la cola de atención: cuántos operadores online, tiempo de rotación y estimado de espera."""
     from tools.openlines.session_queue_info import session_queue_info as _fn
     return await _fn(config_id=config_id)
 
 @mcp.tool()
+@track_tool_usage
 async def session_history_read(session_id: int) -> str:
     """Lee el historial de una sesión de forma SILENCIOSA (sin que el bot aparezca en el chat).
     Ideal para analizar la charla operador-cliente y generar notas internas con sugerencias."""
@@ -445,17 +581,19 @@ async def session_history_read(session_id: int) -> str:
 # ─── Activity / Tasks (Observer) ─────────────────────────────────
 
 @mcp.tool()
-async def task_create(title: str, description: str, responsible_id: int = None, deadline_hours: int = 24, entity_id: int = None, entity_type: str = "LEAD") -> str:
-    """Usa esta tool para CREAR TAREAS de seguimiento interno. Puede vincularse a un Lead o Deal."""
+@track_tool_usage
+async def task_create(req: TaskCreateRequest) -> str:
+    """CREAR TAREAS de seguimiento interno vinculado a Lead/Deal."""
     try:
         from tools.task.task_create import task_create as _fn
-        return await _fn(title=title, description=description, responsible_id=responsible_id, deadline_hours=deadline_hours, entity_id=entity_id, entity_type=entity_type)
+        return await _fn(**req.model_dump(exclude_unset=True))
     except Exception as e:
         import traceback
         sys.stderr.write(f"  ❌ Error en task_create: {e}\n{traceback.format_exc()}\n")
         return f"Error técnico en task_create: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def task_list(entity_id: int = None, entity_type: str = "LEAD") -> str:
     """Lista las tareas de Bitrix24, opcionalmente filtradas por una entidad CRM."""
     from tools.task.task_list import task_list as _fn
@@ -464,17 +602,25 @@ async def task_list(entity_id: int = None, entity_type: str = "LEAD") -> str:
 # ─── Activity / CRM Activities ───────────────────────────────────
 
 @mcp.tool()
-async def crm_activity_add(entity_id: int, entity_type: str, subject: str, type_id: int = 2, start_time: str = None, end_time: str = None, description: str = "") -> str:
-    """Usa esta tool para AGREGAR una actividad (Llamada, Reunión, Email) al CRM.
-    Debe usarse siempre que el CONTEXTO de la charla implique una acción pendiente, una promesa de respuesta o un seguimiento necesario."""
-    from tools.activity.crm_activity_add import crm_activity_add as _fn
-    return await _fn(entity_id=entity_id, entity_type=entity_type, subject=subject, type_id=type_id, start_time=start_time, end_time=end_time, description=description)
+@track_tool_usage
+async def crm_activity_add(req: CRMActivityAddRequest) -> str:
+    """AGREGAR actividad (Llamada, Reunión) al CRM."""
+    try:
+        from tools.activity.crm_activity_add import crm_activity_add as _fn
+        return await _fn(**req.model_dump(exclude_unset=True))
+    except Exception as e:
+        import traceback
+        sys.stderr.write(f"  ❌ Error en crm_activity_add: {e}\n{traceback.format_exc()}\n")
+        return f"Error técnico en crm_activity_add: {e}"
 
 @mcp.tool()
+@track_tool_usage
 async def crm_activity_list(entity_id: int, entity_type: str) -> str:
     """Lista las actividades registradas para un Lead o Deal."""
     from tools.activity.crm_activity_list import crm_activity_list as _fn
     return await _fn(entity_id=entity_id, entity_type=entity_type)
+
+
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -591,16 +737,16 @@ async def identity_management_strategy(chat_id: int, name: str = "", phone: str 
     
 Sigue esta jerarquía obligatoria para gestionar al cliente:
     
-1. **Estética de Bandeja (Título)**: En cuanto identifiques el tema o país de interés, usa `session_title_update`. Esto es vital para que el chat tenga un nombre claro en la bandeja de Bitrix.
-
-2. **DISPARADOR DE LEAD (¡CRITICAL!)**: Si el cliente ya dio su **NOMBRE** y/o **TELÉFONO** ({name or 'Desconocido'}, {phone or 'Desconocido'}) y NO hay un Lead vinculado:
+1. **DISPARADOR DE LEAD (¡CRITICAL!)**: Si el cliente ya dio su **NOMBRE** y/o **TELÉFONO** ({name or 'Desconocido'}, {phone or 'Desconocido'}) y NO hay un Lead vinculado:
     - **Debes llamar a `manage_lead` de inmediato**.
     - **IMPORTANTE**: Asegúrate de pasar el `name` y el `phone` como argumentos a `manage_lead`. Esto evitará duplicados y creará o actualizará el registro según corresponda.
     - Esto garantiza que el cliente aparezca en la sección de **Prospectos** (Leads) de Bitrix24.
     
-3. **ACTUALIZACIÓN DE DATOS**: Si el cliente da un nuevo dato (ej: su teléfono que antes no tenías, o corrige su nombre), usa `manage_lead` nuevamente con los nuevos datos.
+2. **EMAIL OBLIGATORIO**: Si el cliente quiere agendar una cita, **DEBES** obtener su email primero. Es indispensable para enviar el acceso a la reunión.
     
-4. **ENRIQUECIMIENTO**: Una vez asegurado el Lead, usa `enrich_entity` para completar detalles complejos si es necesario.
+3. **ACTUALIZACIÓN DE DATOS**: Si el cliente da un nuevo dato clave (nombre corregido, teléfono), usa `manage_lead`.
+    
+4. **ENRIQUECIMIENTO PROACTIVO**: Usa `enrich_entity` inmediatamente cuando el cliente mencione datos secundarios como su **EMAIL**, **PRESUPUESTO**, **DESTINOS PREFERIDOS** o **CARGO**. No esperes a que termine la charla.
     
 5. **Respuesta**: Sigue con el agendamiento. Tus respuestas se enviarán por duplicado para garantizar visibilidad total.
 """
@@ -636,10 +782,11 @@ PASOS A SEGUIR:
 1. **Verificar Calendario**: Usa el recurso `bitrix://calendar/types` para identificar el ID del calendario adecuado (ej: 'General', 'Ventas').
 2. Usa `calendar_availability_check` para el rango de fechas solicitado.
 3. **SI EL CLIENTE ES UN LEAD**: Ejecuta `lead_convert` para crear el Negocio (Deal) ANTES de agendar.
-4. Con el DEAL_ID y el `section_id` del calendario, usa `calendar_event_create` para agendar.
+4. Con el DEAL_ID y el `section_id` del calendario (USA 0 si no estás seguro o si es para el calendario principal), usa `calendar_event_create` para agendar.
 5. Confirma la cita al cliente resaltando que ya está en agenda.
 
-NOTA: La tool `calendar_event_create` ya incluye el recordatorio de 60 min por defecto."""
+NOTA: La tool `calendar_event_create` ya incluye el recordatorio de 60 min por defecto y rintentará con sección 0 si falla.
+"""
 
 
 @mcp.prompt()
@@ -663,10 +810,10 @@ async def convert_to_lead(chat_id: int, name: str = "", phone: str = "", interes
 Una vez identificado el interés y los datos del cliente ({name}, {phone}, Interés: {interest}), el siguiente paso es formalizarlo en el CRM.
     
 PASOS:
-1. Usa `lead_add` proporcionando el `chat_id` ({chat_id}).
-2. El sistema creará el Lead y lo VINCULARÁ automáticamente a esta conversación.
+1. Usa `manage_lead` proporcionando el `chat_id` ({chat_id}), `name` y `phone`.
+2. El sistema creará o actualizará el Lead y lo VINCULARÁ automáticamente a esta conversación.
 3. Esto permite que el historial del chat sea visible para los vendedores dentro de la ficha del Lead.
-4. Una vez creado, puedes informar al cliente que un asesor revisará su solicitud.
+4. Una vez gestionado, puedes informar al cliente que un asesor revisará su solicitud.
 """
 
 
@@ -676,7 +823,7 @@ async def check_crm_status(chat_id: int) -> str:
     return f"""INSTRUCCIÓN: Gestión de CRM en Chat
     
 PASOS:
-1. Usa `session_crm_get` para ver si el chat ({chat_id}) ya tiene un Lead o Deal vinculado. 
+1. Usa `session_crm_get` para ver si el chat ({chat_id}) ya tiene un Lead o Deal vinculado.
 2. Si existe un vínculo, evita duplicar esfuerzos. Si no existe, puedes proceder con la calificación."""
 
 @mcp.prompt()
@@ -704,11 +851,11 @@ PASOS A SEGUIR:
 2. Según la acción:
     - Mover etapa → `deal_move_stage`
     - Gestionar Carrito → `catalog_product_search` → `deal_add_products` / `deal_remove_product`
-   - Cerrar → `deal_mark_closed`
    - Agregar nota → `crm_add_note` (entity_type='DEAL')
 3. Registra siempre un resumen de la gestión con `crm_add_note`.
 
-NOTA: Siempre verificar el estado actual antes de hacer cambios."""
+NOTA: Siempre verificar el estado actual antes de hacer cambios. PROHIBIDO CERRAR NEGOCIOS.
+"""
 
 
 @mcp.prompt()
@@ -726,6 +873,18 @@ PASOS:
    - Solo Base de Datos: `create_deal=False`, `create_contact=True`
 3. Recibirás los IDs de las entidades creadas.
 4. Usa el DEAL_ID para gestionar la venta.
+"""
+@mcp.prompt()
+async def funnel_advancement_strategy(lead_id: int) -> str:
+    """Guía: Cómo y cuándo avanzar al cliente en las etapas del CRM."""
+    return f"""INSTRUCCIÓN: Avance de Embudo (Sales Funnel)
+    
+Tu objetivo es que el cliente no se quede estancado en la etapa inicial.
+    
+PASOS:
+1. **Tras capturar Datos**: En cuanto uses `manage_lead` o `enrich_entity` y tengas Nombre + (Teléfono o Email), ejecuta `lead_qualify`({lead_id}).
+2. **Tras Asignación**: Si detectas que un humano ha sido asignado o si el cliente ya está calificado, usa `lead_qualify` para moverlo a 'ASIGNACIÓN'.
+3. **Cierre**: Mantén al cliente informado de que su perfil está siendo procesado para darle la mejor atención.
 """
 
 @mcp.prompt()
@@ -788,12 +947,16 @@ async def chat_management_flow(chat_id: int) -> str:
     """Guía: Estética de bandeja, vinculación CRM y transferencia."""
     return f"""INSTRUCCIÓN: Gestión Profesional de Chat (Openlines)
     
-PASOS OBLIGATORIOS PARA EL CONTROL DEL CHAT:
+PASOS OBLIGATORIOS PARA EL CONTROL DE CITA:
 
-1. **Estética (Nombre del Chat)**: En cuanto identifiques el destino o motivo (ej: "Interés en Dubái"), usa de inmediato `session_title_update` para renombrar el chat {chat_id}.
-   - Formato sugerido: "[Destino] - [Nombre del Cliente]".
+1. **Vínculo CRM**: Usa `bitrix://openlines/session/{chat_id}/crm` para ver si ya hay un Lead. Si no lo hay, usa `manage_lead`.
 
-2. **Vínculo CRM**: Usa el recurso `bitrix://openlines/session/{chat_id}/crm` para ver si ya hay un Lead. Si no lo hay y tienes datos (nombre/tel), usa `manage_lead`.
+2. **Email para Cita**: Antes de llamar a `calendar_event_create`, confirma que tienes el Email.
+
+3. **Contexto de Cita**: El Título DEBE ser "[Destino] - [Nombre]" y la Descripción debe resumir lo conversado.
+
+4. **Tarea de Seguimiento**: Tras agendar con éxito, **SIEMPRE** llama a `task_create`. 
+   - **CONTENIDO**: En la descripción de la tarea, incluye la fecha/hora de la cita y el perfil del cliente (email, presupuesto, intereses). Esto es vital para el asesor.
 
 3. **Transferencia Inteligente**: 
    - Mantén la charla mientras sea una consulta de catálogo o calificación.
@@ -852,3 +1015,16 @@ PASOS OBLIGATORIOS:
 
 if __name__ == "__main__":
     mcp.run(transport="stdio")
+
+@mcp.prompt()
+async def advisor_transfer_strategy(chat_id: int, lead_id: int = None, advisor_id: int = None) -> str:
+    """Guía: Secuencia optimizada para transferir a un asesor asegurando notificación."""
+    return f"""INSTRUCCIÓN: Protocolo de Traspaso a Asesor
+    
+Para asegurar que el asesor sea notificado de inmediato, DEBES seguir este orden:
+
+1. **Resumen en CRM**: Usa `crm_add_note` (entity_id={lead_id or 'ID_DEL_LEAD'}, entity_type='LEAD') con un resumen de 3 puntos de lo que el cliente busca.
+2. **Transferencia**: Usa `session_transfer`(chat_id={chat_id}, user_id={advisor_id or 'ID_OPCIONAL'}).
+3. **Notificación Directa (Pop-up)**: Si tienes el ID del asesor ({advisor_id or 'ID_OPCIONAL'}), usa `advisor_notify` con un mensaje breve: "[Bot] Cliente esperando en chat {chat_id}".
+
+No omitas ningún paso para garantizar la mejor experiencia al cliente."""

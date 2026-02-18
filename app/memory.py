@@ -58,3 +58,13 @@ async def get_seed_messages(chat_id: str, max_messages: int = 6) -> list:
     if not history:
         return []
     return history[-max_messages:]
+
+
+async def clear_chat_history(chat_id: str):
+    """Elimina todo el historial y metadatos de un chat en Redis."""
+    r = await get_redis()
+    key = _key(chat_id)
+    await r.delete(key)
+    # También lock si existiera (aunque suelen ser temporales)
+    await r.delete(f"lock:chat:{chat_id}")
+    print(f"🧹 [Redis] Historial y locks eliminados para chat: {chat_id}")

@@ -8,6 +8,7 @@ venv/
 # Secrets
 .env
 mcp_agent.secrets.yaml
+firestore-key.json
 
 # Logs
 logs/
@@ -20,3 +21,4 @@ logs/
 
 # Data
 conversation_history.json
+redis_data/

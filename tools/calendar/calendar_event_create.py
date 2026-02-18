@@ -11,7 +11,10 @@ async def calendar_event_create(title: str, start_time: str, end_time: str, desc
     
     IMPORTANT INSTRUCTION FOR AGENT:
     1. Confirm the creation briefly: "Done. Meeting scheduled for [Date] at [Time]."
-    2. Do NOT add unnecessary chatter.
+    2. TITLE: Use "[Destino/Motivo] - [Nombre del Cliente]".
+    3. DESCRIPTION: Include a brief summary of the client's interests and budget.
+    4. Collect the customer's EMAIL before calling this tool.
+    5. Do NOT add unnecessary chatter.
     """
     if not title or not start_time or not end_time:
         return "Error: title, start_time y end_time son requeridos."
@@ -38,6 +41,14 @@ async def calendar_event_create(title: str, start_time: str, end_time: str, desc
         result = await call_bitrix_method("calendar.event.add", fields)
         event_id = result.get("result")
         
+        # Si falla por sección inválida, reintentar con sección 0
+        error_msg = result.get("error_description", "")
+        if not event_id and "ID de sección" in error_msg and section_id != 0:
+            sys.stderr.write(f"  ⚠️ Reintentando calendar_event_create con sección 0 por error: {error_msg}\n")
+            fields["section"] = 0
+            result = await call_bitrix_method("calendar.event.add", fields)
+            event_id = result.get("result")
+
         if event_id:
             return f"Evento '{title}' agendado exitosamente. ID: {event_id}. Recordatorio: {remind_mins} min."
         else:

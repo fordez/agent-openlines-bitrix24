@@ -1,0 +1,85 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  PROJECT_ID: 'aibot24-485301' 
+  REGION: 'us-central1'
+  GAR_NAME: 'repo-aibot24'
+  SERVICE_NAME: 'aibot24-chat'
+  # Construir la URL completa del repositorio: region-docker.pkg.dev/project/repo
+  GAR_LOCATION: 'us-central1-docker.pkg.dev/aibot24-485301/repo-aibot24'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Authenticate to Google Cloud using Workload Identity Federation
+      - id: 'auth'
+        name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          # Pegas el valor que obtuvimos del WIF directamente
+          workload_identity_provider: 'projects/561162834548/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'serverless-deployer@aibot24-485301.iam.gserviceaccount.com'
+
+      # Set up gcloud CLI
+      - name: 'Set up Cloud SDK'
+        uses: 'google-github-actions/setup-gcloud@v2'
+
+      # Configure Docker to use gcloud as a credential helper
+      - name: 'Docker Auth'
+        run: |-
+          gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+
+      # Build and Push Container
+      - name: 'Build and Push Container'
+        run: |-
+          docker build -t "${{ env.GAR_LOCATION }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" .
+          docker push "${{ env.GAR_LOCATION }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
+
+      # Deploy to Cloud Run
+      - name: 'Deploy to Cloud Run'
+        uses: 'google-github-actions/deploy-cloudrun@v2'
+        with:
+          service: '${{ env.SERVICE_NAME }}'
+          region: '${{ env.REGION }}'
+          image: '${{ env.GAR_LOCATION }}/${{ env.SERVICE_NAME }}:${{ github.sha }}'
+          # --no-allow-unauthenticated es el default, pero lo hacemos explícito para seguridad
+          flags: '--port=8080 --no-allow-unauthenticated --memory=1Gi --cpu=2'
+          env_vars: |-
+            REDIS_URL=redis://localhost:6379/0
+
+      # Update API Gateway
+      - name: 'Update API Gateway Config'
+        run: |-
+          # 1. Get Cloud Run URL
+          RUN_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} --region ${{ env.REGION }} --format 'value(status.url)')
+          
+          # 2. Update OpenAPI Spec with actual URL
+          # We search for the generic placeholder and replace it with the real Cloud Run URL
+          sed -i "s|REPLACE_WITH_CLOUD_RUN_URL|$RUN_URL|g" openapi2-run.yaml
+          
+          # 3. Deploy API Config
+          gcloud api-gateway api-configs create "${{ env.SERVICE_NAME }}-config-${{ github.sha }}" \
+            --api="${{ env.SERVICE_NAME }}-api" \
+            --openapi-spec=openapi2-run.yaml \
+            --project="${{ env.PROJECT_ID }}" \
+            --backend-auth-service-account="serverless-deployer@aibot24-485301.iam.gserviceaccount.com"
+            
+          # 4. Update Gateway (Optional: if gateway already exists, otherwise create it)
+          # gcloud api-gateway gateways update "${{ env.SERVICE_NAME }}-gw" \
+          #   --api="${{ env.SERVICE_NAME }}-api" \
+          #   --api-config="${{ env.SERVICE_NAME }}-config-${{ github.sha }}" \
+          #   --location="${{ env.REGION }}" \
+          #   --project="${{ env.PROJECT_ID }}"

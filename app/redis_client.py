@@ -16,7 +16,7 @@ class MockRedis:
         self._data = {}
     async def get(self, key):
         return self._data.get(key)
-    async def set(self, key, value):
+    async def set(self, key, value, **kwargs):
         self._data[key] = value
         return True
     async def aclose(self):

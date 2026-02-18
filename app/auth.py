@@ -46,80 +46,79 @@ def update_env_file(key, value):
 
 
 
-async def call_bitrix_method(method, params=None, access_token=None, domain=None):
+async def call_bitrix_method(method, params=None, access_token=None, domain=None, member_id=None):
     """
     Llama a un método de la API de Bitrix24.
-    - Si access_token está presente: lo usa (para respuestas a Bitrix desde eventos)
-    - Si no: usa TOKEN MANAGER (para tools del MCP server)
+    - Resolucion de tenant: Prioriza member_id -> context_var -> env.
     """
     if params is None:
         params = {}
 
-    # Obtener dominio (prioritario: parámetro > env var)
-    if not domain:
-        domain = get_env_var("BITRIX_DOMAIN")
-        if not domain:
-            endpoint = get_env_var("BITRIX_CLIENT_ENDPOINT")
-            if endpoint:
-                domain = endpoint.replace("https://", "").split("/")[0]
+    from app.token_manager import get_token_manager
+    tm = await get_token_manager()
 
-    # Si NO se pasó token explícitamente, usar TokenManager
+    # 1. Resolver member_id
+    if not member_id:
+        member_id = await tm.get_member_id()
+
+    # 2. Obtener Token y Dominio si no se pasaron
     if not access_token:
-        from app.token_manager import get_token_manager
-        token_manager = await get_token_manager()
-        access_token = await token_manager.get_token()
+        access_token = await tm.get_token(member_id)
+
+    if not domain:
+        # Intentar obtener del cache de Redis vía TokenManager para este tenant
+        if member_id:
+            redis = await tm._get_redis()
+            cached_domain = await redis.get(tm._get_redis_key(member_id, "domain"))
+            if cached_domain:
+                domain = cached_domain.decode("utf-8") if isinstance(cached_domain, bytes) else cached_domain
+
+        if not domain:
+            domain = get_env_var("BITRIX_DOMAIN")
 
     if not domain or not access_token:
-        error_msg = f"Faltan credenciales: DOMAIN={'OK' if domain else 'MISSING'}, TOKEN={'OK' if access_token else 'MISSING'}"
+        error_msg = f"Faltan credenciales para tenant {member_id}: DOMAIN={'OK' if domain else 'MISSING'}, TOKEN={'OK' if access_token else 'MISSING'}"
         sys.stderr.write(f"  ❌ {error_msg}\n")
-        # Debug: list available env vars starting with BITRIX or ACCESS
-        relevant_vars = {k: v[:5] + "..." if v else v for k, v in os.environ.items() if "BITRIX" in k or "TOKEN" in k or "ENDPOINT" in k}
-        sys.stderr.write(f"  🔍 Variables relevantes presentes: {relevant_vars}\n")
         raise ValueError(error_msg)
 
     url = f"https://{domain}/rest/{method}"
-
-    # Append auth to URL as query param (safer for some Bitrix endpoints)
-    if "?" in url:
-        url += f"&auth={access_token}"
-    else:
-        url += f"?auth={access_token}"
+    # Se agrega auth como query param
+    auth_url = f"{url}?auth={access_token}" if "?" not in url else f"{url}&auth={access_token}"
 
     try:
         client = await get_http_client()
-        response = await client.post(url, json=params)
+        response = await client.post(auth_url, json=params)
 
-        # Si el token es inválido o expiró (401/400 con error de auth)
+        # Si el token es inválido o expiró
         if response.status_code in [400, 401]:
             try:
                 data = response.json()
-                error_code = data.get("error", "")
-                if error_code in ["expired_token", "invalid_token", "WRONG_AUTH_TYPE"]:
-                    sys.stderr.write(f"  🔄 Token rechazado por Bitrix ({error_code}). Reintentando refresh...\n")
-                    from app.token_manager import get_token_manager
-                    tm = await get_token_manager()
-                    await tm.force_refresh()
-                    # Re-obtener URL con nuevo token
-                    new_token = await tm.get_token()
-                    new_url = url.split("?")[0] + f"?auth={new_token}"
-                    response = await client.post(new_url, json=params)
+                if data.get("error") in ["expired_token", "invalid_token", "WRONG_AUTH_TYPE"]:
+                    sys.stderr.write(f"  🔄 Token expirado para {member_id}, refrescando...\n")
+                    new_token = await tm.force_refresh(member_id)
+                    auth_url = f"{url}?auth={new_token}" if "?" not in url else f"{url}&auth={new_token}"
+                    response = await client.post(auth_url, json=params)
             except:
                 pass
 
         if response.status_code >= 400:
-            sys.stderr.write(f"  ❌ Bitrix API Error Body: {response.text}\n")
+            sys.stderr.write(f"  ❌ Bitrix API Error ({member_id}): {response.text}\n")
 
         response.raise_for_status()
-        data = response.json()
-        sys.stderr.write(f"  📡 Bitrix API: {method} -> Result: {'Success' if 'result' in data else 'Error or Empty'}\n")
-        if "error" in data:
-            sys.stderr.write(f"  ⚠️ Bitrix API Error: {data.get('error_description', data.get('error'))}\n")
-        return data
+        return response.json()
 
     except Exception as e:
         sys.stderr.write(f"  ❌ Error llamando a {method}: {e}\n")
         raise
 
 async def get_current_user_id() -> int:
-    """Retorna el ID del usuario actual (el bot). Hardcoded 3040 para pruebas."""
-    return 3040
+    """Retorna el ID del usuario actual (el bot). Fallback a 1 (Daniel Posada) si falla."""
+    try:
+        res = await call_bitrix_method("user.current")
+        user_id = res.get("result", {}).get("ID")
+        if user_id:
+            return int(user_id)
+    except Exception as e:
+        sys.stderr.write(f"  ⚠️ Error obteniendo user.current: {e}. Usando fallback ID=1\n")
+    
+    return int(os.getenv("DEFAULT_RESPONSIBLE_ID", 1))

@@ -19,7 +19,9 @@ async def session_transfer(chat_id: str, user_id: str = "", queue_id: str = "", 
     if not chat_id:
         return "Error: chat_id es requerido."
     if not user_id and not queue_id:
-        return "Error: Se requiere user_id o queue_id para transferir."
+        import sys
+        sys.stderr.write(f"  ⚠️ No se proporcionó user_id ni queue_id para chat {chat_id}. Usando queue_id=1 por defecto.\n")
+        queue_id = "1"
 
     params = {"CHAT_ID": chat_id}
     if user_id:
@@ -28,6 +30,8 @@ async def session_transfer(chat_id: str, user_id: str = "", queue_id: str = "", 
         params["QUEUE_ID"] = queue_id
 
     try:
+        import sys
+        sys.stderr.write(f"  📤 Intentando transferencia: CHAT={chat_id}, USER={user_id}, QUEUE={queue_id}\n")
         result = await call_bitrix_method("imopenlines.bot.session.transfer", params, access_token=access_token, domain=domain)
         if result.get("result"):
             dest = f"operador {user_id}" if user_id else f"cola {queue_id}"

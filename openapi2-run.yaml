@@ -1,0 +1,37 @@
+swagger: '2.0'
+info:
+  title: AIBot24 Chat API
+  description: API Gateway for AIBot24 Chat Service
+  version: 1.0.0
+schemes:
+  - https
+produces:
+  - application/json
+paths:
+  /api/chat:
+    post:
+      summary: Send a message to the chatbot
+      operationId: chat
+      x-google-backend:
+        address: REPLACE_WITH_CLOUD_RUN_URL # SED_REPLACE_TARGET
+        protocol: h2
+      responses:
+        '200':
+          description: A successful response
+          schema:
+            type: string
+  /health:
+    get:
+      summary: Health check endpoint
+      operationId: health
+      x-google-backend:
+        address: REPLACE_WITH_CLOUD_RUN_URL # SED_REPLACE_TARGET
+        protocol: h2
+      responses:
+        '200':
+          description: Service is healthy
+          schema:
+            type: object
+            properties:
+              status:
+                type: string

@@ -11,8 +11,8 @@ async def calendar_event_list(from_date: str = None, to_date: str = None) -> str
     Si no das fechas, toma los próximos 7 díasales.
     
     Args:
-        from_date: Fecha inicio (YYYY-MM-DD).
-        to_date: Fecha fin (YYYY-MM-DD).
+        from_date: Fecha inicio (YYYY-MM-DD). Usa siempre el año y fecha actual del contexto.
+        to_date: Fecha fin (YYYY-MM-DD). Usa siempre el año y fecha actual del contexto.
     """
     sys.stderr.write(f"  📅 Tool calendar_event_list: from={from_date}, to={to_date}\n")
     sys.stderr.write("  🔑 Creds: (usando TokenManager centralizado)\n")

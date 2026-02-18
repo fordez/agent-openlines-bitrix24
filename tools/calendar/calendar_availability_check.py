@@ -10,8 +10,8 @@ async def calendar_availability_check(start_time: str, end_time: str) -> str:
     Retorna si el horario está ocupado.
     
     Args:
-        start_time: Fecha y hora de inicio (YYYY-MM-DD HH:MM:SS).
-        end_time: Fecha y hora de fin (YYYY-MM-DD HH:MM:SS).
+        start_time: Fecha y hora de inicio (YYYY-MM-DD HH:MM:SS). Usa siempre el año y fecha actual del contexto.
+        end_time: Fecha y hora de fin (YYYY-MM-DD HH:MM:SS). Usa siempre el año y fecha actual del contexto.
     
     IMPORTANT INSTRUCTION FOR AGENT:
     1. DO NOT list available times. NEVER.

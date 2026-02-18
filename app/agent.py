@@ -10,6 +10,7 @@ from app.sessions import (
     create_new_session, cleanup_expired_sessions, remove_session
 )
 from app.bitrix import send_typing_indicator
+from app.metrics import MetricsService
 
 async def get_response(user_message: str, chat_id: str, event_token: str = None, client_endpoint: str = None, session_id: int = None, user_name: str = None, user_id: str = None, chat_id_num: int = None) -> str:
     """
@@ -60,15 +61,16 @@ async def get_response(user_message: str, chat_id: str, event_token: str = None,
                 f"[FECHA Y HORA ACTUAL: {now_str}]\n"
                 f"[CONTEXTO ACTUAL: {', '.join(context_list)}]\n\n"
                 "⚠️ NOTA: El `BITRIX_CHAT_ID` numérico es el que debes usar para herramientas del CRM.\n"
-                "⚠️ NOTA: IMPORTANTE - Al llamar a `lead_add`, DEBES incluir el Nombre y el Teléfono recolectados como argumentos explicitamente.\n"
+                "⚠️ NOTA: IMPORTANTE - Al llamar a `manage_lead`, DEBES incluir el Nombre y el Teléfono/Email recolectados como argumentos explicitamente.\n"
                 "⚠️ NOTA: NO necesitas pasar `access_token` a las herramientas.\n"
             )
             
-            await add_message(chat_id, "user", f"{context_prefix}{user_message}")
+            full_message = f"{context_prefix}{user_message}"
+            await add_message(chat_id, "user", full_message)
 
             # 2. Enviar al LLM (contexto multi-turno nativo de mcp-agent)
             print(f"  📤 Enviando a LLM: {user_message[:50]}...")
-            response = await session.llm.generate(message=user_message)
+            response = await session.llm.generate(message=full_message)
             print(f"  📥 Respuesta raw LLM type: {type(response)}")
 
             # Extraer texto de la respuesta de forma segura
@@ -139,6 +141,37 @@ async def get_response(user_message: str, chat_id: str, event_token: str = None,
                 await session.agent.__aexit__(None, None, None)
             except Exception:
                 pass
+
+            # 4. Registrar métricas de tokens (Async)
+            try:
+                # Intento genérico de extraer usage, depende del provider
+                prompt_tokens = 0
+                completion_tokens = 0
+                
+                # OpenAI style
+                if hasattr(response, 'usage') and response.usage:
+                    prompt_tokens = getattr(response.usage, 'prompt_tokens', 0)
+                    completion_tokens = getattr(response.usage, 'completion_tokens', 0)
+                # Google style (candidate.usage_metadata?) - simplificado
+                # Si no está disponible fácil, lo dejamos en 0 por ahora o implementamos lógica específica
+                
+                metrics = await MetricsService.get_instance()
+                # Extraer tenant_id del chat_id o context si es posible
+                # Por ahora usamos 'default' o el member_id si lo tenemos en contexto
+                from app.context_vars import member_id_var
+                current_tenant = member_id_var.get() or "unknown"
+                
+                # Asumimos que session.llm tiene el modelo configurado
+                model_name = "unknown"
+                if hasattr(session, 'llm') and hasattr(session.llm, 'model'):
+                    model_name = session.llm.model
+
+                if prompt_tokens > 0:
+                    await metrics.log_token_usage(current_tenant, prompt_tokens, completion_tokens, model_name)
+                    print(f"📊 [Metrics] Tokens logged: {prompt_tokens} + {completion_tokens}")
+
+            except Exception as e:
+                print(f"⚠️ Error logging metrics: {e}")
 
             return "Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo."
 

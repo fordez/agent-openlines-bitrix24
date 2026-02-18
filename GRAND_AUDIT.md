@@ -12,7 +12,6 @@ He analizado las **49 herramientas** existentes. A continuación, la clasificaci
 | **CRM** | `lead_convert` | Dispara el proceso de venta (Deal) |
 | **CRM** | `crm_add_note` | Registra historial/comentarios |
 | **Deals** | `deal_move_stage` | Cambia etapa del embudo |
-| **Deals** | `deal_mark_closed` | Cierra negocio (Ganado/Perdido) |
 | **Calendar** | `calendar_event_create` | Agenda cita |
 | **Calendar** | `calendar_event_update` | Reprograma cita |
 | **Calendar** | `calendar_event_delete` | Cancela cita |

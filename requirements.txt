@@ -8,3 +8,5 @@ mcp-agent==0.2.6
 redis==5.2.1
 google-genai==1.3.0
 openai==1.63.2
+firebase-admin==6.6.0
+psutil==5.9.8
