@@ -1,5 +1,6 @@
 import os
 import json
+import asyncio
 import firebase_admin
 from firebase_admin import credentials, firestore
 from app.redis_client import get_redis
