@@ -164,22 +164,22 @@ async def create_new_session(chat_id: str) -> AgentSession:
         # os.environ["GOOGLE_DEFAULT_MODEL"] = ai_model # Google adapter might use different env var or specific kwarg
 
     
-    # Extraer API Key del config (si existe)
-    api_key = None
+    # Pass model and temperature via partial to the factory
+    from functools import partial
+    
+    # Extraer API Key del config (si existe) y poner en environ para el factory
     if config:
-        # Override Provider if set in Agent
         if config.get("provider"):
             llm_provider = config.get("provider").lower()
             print(f"🔄 [Sessions] Provider cambiado por Agente: {llm_provider}")
 
-        if llm_provider == "openai":
-            api_key = config.get("openaiApiKey")
-        elif llm_provider == "google":
-            api_key = config.get("googleApiKey")
-
-    # Pass model and temperature explicitly to override defaults
+        # mcp-agent busca estas variables por defecto
+        if llm_provider == "openai" and config.get("openaiApiKey"):
+            os.environ["OPENAI_API_KEY"] = config.get("openaiApiKey")
+        elif llm_provider == "google" and config.get("googleApiKey"):
+            os.environ["GOOGLE_API_KEY"] = config.get("googleApiKey")
+    
     llm_kwargs = {
-        "api_key": api_key,
         "model": ai_model,
         "temperature": ai_temp
     }
@@ -187,9 +187,11 @@ async def create_new_session(chat_id: str) -> AgentSession:
     print(f"🔌 [Sessions] Attaching LLM ({llm_provider}): {ai_model} (T={ai_temp})")
 
     if llm_provider == "openai":
-        llm = await travel_agent.attach_llm(OpenAIAugmentedLLM, **llm_kwargs)
+        factory = partial(OpenAIAugmentedLLM, **llm_kwargs)
+        llm = await travel_agent.attach_llm(llm_factory=factory)
     else:
-        llm = await travel_agent.attach_llm(GoogleAugmentedLLM, **llm_kwargs)
+        factory = partial(GoogleAugmentedLLM, **llm_kwargs)
+        llm = await travel_agent.attach_llm(llm_factory=factory)
 
     session = AgentSession(
         agent=travel_agent,

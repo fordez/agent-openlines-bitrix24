@@ -140,17 +140,23 @@ async def get_response(user_message: str, chat_id: str, event_token: str = None,
             return ai_response
 
         except Exception as e:
-            print(f"❌ Error de mcp-agent: {e}")
+            print(f"❌ Error de mcp-agent en get_response: {e}")
             traceback.print_exc()
 
             # Invalidar sesión para recrear en próximo intento
             await remove_session(chat_id)
-            try:
-                await session.agent.__aexit__(None, None, None)
-                if session.app_context_manager:
-                    await session.app_context_manager.__aexit__(None, None, None)
-            except Exception:
-                pass
+            
+            # Limpieza segura si la sesión llegó a existir
+            if 'session' in locals() and session:
+                try:
+                    if hasattr(session.agent, '__aexit__'):
+                        await session.agent.__aexit__(None, None, None)
+                    if session.app_context_manager and hasattr(session.app_context_manager, '__aexit__'):
+                        await session.app_context_manager.__aexit__(None, None, None)
+                except Exception as cleanup_err:
+                    print(f"  ⚠️ Error en limpieza post-error: {cleanup_err}")
+
+            return "Lo siento, ocurrió un error al procesar tu mensaje. Por favor intenta de nuevo."
 
             # 4. Registrar métricas de tokens (Async)
             try:

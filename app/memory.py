@@ -73,5 +73,7 @@ async def clear_chat_history(chat_id: str):
     key = _key(chat_id)
     await r.delete(key)
     # También lock si existiera (aunque suelen ser temporales)
-    await r.delete(f"lock:chat:{chat_id}")
-    print(f"🧹 [Redis] Historial y locks eliminados para chat: {chat_id}")
+    # IMPORTANTE: No borrar el lock aquí si se está llamando create_new_session 
+    # desde dentro de un 'async with chat_lock', porque causará LockNotOwnedError al salir.
+    # await r.delete(f"lock:chat:{chat_id}")
+    print(f"🧹 [Redis] Historial eliminado para chat: {chat_id}")
