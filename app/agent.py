@@ -132,6 +132,7 @@ async def get_response(user_message: str, chat_id: str, event_token: str = None,
                 await add_message(chat_id, "assistant", ai_response)
             else:
                  print("  ⚠️ AI Response is empty!")
+                 ai_response = "Lo siento, no pude generar una respuesta en este momento."
 
             # Desactivar typing indicator
             if event_token and client_endpoint:

@@ -9,9 +9,13 @@ import os
 import httpx
 import sys
 
-# BASE_DIR and ENV_FILE only used for local dev if they exist
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENV_FILE = os.path.join(BASE_DIR, ".env")
+# Cargar variables de entorno solo si existe el archivo (local dev)
+if os.path.exists(ENV_FILE):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(ENV_FILE)
+    except Exception:
+        pass
 
 # Cliente HTTP compartido (reutiliza conexiones TCP)
 _http_client: httpx.AsyncClient | None = None

@@ -78,8 +78,10 @@ async def cleanup_expired_sessions():
 
 async def create_new_session(chat_id: str) -> AgentSession:
     """Crea una nueva sesión de agente para un chat_id."""
-    # Limpiar Redis al iniciar sesión (según requerimiento user: "cuando inicia o finaliza")
-    await clear_chat_history(chat_id)
+    # IMPORTANTE: No borrar el historial al iniciar sesión. 
+    # Cloud Run apaga instancias (instancias a cero) frecuentemente.
+    # Queremos que el bot recuerde lo anterior al re-encenderse por un nuevo mensaje.
+    # await clear_chat_history(chat_id) 
     
     # AI config ahora vive en .env
     llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
@@ -166,22 +168,34 @@ async def create_new_session(chat_id: str) -> AgentSession:
     
     # Pass model and temperature via partial to the factory
     from functools import partial
+    from app.secrets_loader import get_secret
     
-    # Extraer API Key del config (si existe) y poner en environ para el factory
+    # Resolver API Key
+    api_key = None
     if config:
         if config.get("provider"):
             llm_provider = config.get("provider").lower()
             print(f"🔄 [Sessions] Provider cambiado por Agente: {llm_provider}")
 
-        # mcp-agent busca estas variables por defecto
+        # 1. Prioridad: Firestore (tenent-specific override)
         if llm_provider == "openai" and config.get("openaiApiKey"):
-            os.environ["OPENAI_API_KEY"] = config.get("openaiApiKey")
+            api_key = config.get("openaiApiKey")
         elif llm_provider == "google" and config.get("googleApiKey"):
-            os.environ["GOOGLE_API_KEY"] = config.get("googleApiKey")
+            api_key = config.get("googleApiKey")
+    
+    # 2. Fallback: secrets_loader (Environment or secrets.yaml)
+    if not api_key:
+        api_key = get_secret(llm_provider)
+
+    if api_key:
+        # Poner en environ como fallback para librerías que lo busquen directamente
+        env_var_name = "OPENAI_API_KEY" if llm_provider == "openai" else "GOOGLE_API_KEY"
+        os.environ[env_var_name] = api_key
     
     llm_kwargs = {
         "model": ai_model,
-        "temperature": ai_temp
+        "temperature": ai_temp,
+        "api_key": api_key
     }
     
     print(f"🔌 [Sessions] Attaching LLM ({llm_provider}): {ai_model} (T={ai_temp})")
