@@ -22,6 +22,7 @@ from app.context import app, MCP_SERVER_NAME
 from app.firestore_config import get_firestore_config
 from app.memory import format_history_str, clear_chat_history
 from app.redis_client import get_redis
+from app.secrets_loader import get_secret
 
 SESSION_TTL_SECONDS = 30 * 60  # 30 minutos
 
@@ -169,7 +170,6 @@ async def create_new_session(chat_id: str) -> AgentSession:
     
     # Pass model and temperature via partial to the factory
     from functools import partial
-    from app.secrets_loader import get_secret
     
     # Resolver API Key
     api_key = None
@@ -186,12 +186,26 @@ async def create_new_session(chat_id: str) -> AgentSession:
     
     # 2. Fallback: secrets_loader (Environment or secrets.yaml)
     if not api_key:
+        print("⚠️ [Sessions] API Key no encontrada en config. Intentando secrets_loader...")
         api_key = get_secret(llm_provider)
 
     if api_key:
+        masked_key = f"{api_key[:8]}...{api_key[-4:]}"
+        print(f"🔑 [Sessions] API Key encontrada: {masked_key}")
+        
         # Poner en environ como fallback para librerías que lo busquen directamente
         env_var_name = "OPENAI_API_KEY" if llm_provider == "openai" else "GOOGLE_API_KEY"
         os.environ[env_var_name] = api_key
+        
+        # FIX: Algunos wrappers de mcp-agent pueden usar client legacy de OpenAI
+        # Forzar configuración global también por si acaso
+        if llm_provider == "openai":
+            import openai
+            openai.api_key = api_key
+            print("🔧 [Sessions] openai.api_key set globalmente.")
+
+    else:
+        print("❌ [Sessions] CRITICAL: No se encontró API Key para el proveedor!!")
     
     llm_kwargs = {
         "model": ai_model,
