@@ -98,9 +98,10 @@ async def create_new_session(chat_id: str) -> AgentSession:
     from app.prompts import _DEFAULT_SYSTEM_PROMPT
     
     fs_service = await get_firestore_config()
-    # Obtenemos el member_id del entorno (seteado en main.py al recibir el evento)
-    # NOTA: Main.py ahora setea esto al DOMINIO (ej. workflowteams.bitrix24.es), no al member_id numérico.
-    tenant_id = os.getenv("BITRIX_MEMBER_ID")
+    # Obtenemos el member_id del context var (seteado en main.py) o fallback env
+    from app.context_vars import member_id_var
+    tenant_id = member_id_var.get() or os.getenv("BITRIX_MEMBER_ID")
+    
     config = await fs_service.get_tenant_config(tenant_id) if tenant_id else None
     
     if config:

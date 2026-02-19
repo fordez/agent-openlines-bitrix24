@@ -166,6 +166,8 @@ class FirestoreConfigService:
                 "model": agent_payload.get("model"),
                 "temperature": agent_payload.get("temperature"),
                 "provider": agent_payload.get("provider"),
+                "openaiApiKey": agent_payload.get("openaiApiKey") or agent_payload.get("openai_api_key"),
+                "googleApiKey": agent_payload.get("googleApiKey") or agent_payload.get("google_api_key"),
             }
             print(f"🤖 [Firestore] Agente activo encontrado: {agent_payload.get('name')}")
 
