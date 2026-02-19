@@ -47,10 +47,14 @@ async def startup():
     await get_token_manager()
     print("🚀 TokenManager inicializado")
     
+    # Init Config
+    from app.config import config
+    config.print_summary()
+    
     # Init Firestore and Start Listener
-    fs_service = await get_firestore_config()
-    fs_service.start_listener()
-    print("🔥 Firestore Listener iniciado")
+    fs = await get_firestore_config()
+    fs.start_listener()
+    print("🚀 Firestore Listeners activos")
 
     # Start System Metrics
     metrics = await MetricsService.get_instance()

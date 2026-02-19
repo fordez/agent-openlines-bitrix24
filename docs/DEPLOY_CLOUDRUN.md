@@ -19,15 +19,19 @@ gcloud run deploy aibot24-chat \
   --port 8080 \
   --memory 1Gi \
   --cpu 2 \
-  --set-env-vars=REDIS_URL=redis://localhost:6379/0
+  --set-env-vars=REDIS_URL=redis://localhost:6379/0,OPENAI_API_KEY=sk-xxx,AI_MODEL=gpt-4o,AI_TEMPERATURE=0.7
 ```
 
-### 2. Variables de Entorno
-Asegúrate de configurar las variables de entorno necesarias (claves API, etc.) en Cloud Run o pasarlas con `--set-env-vars`.
+### 2. Variables de Entorno Requeridas
+| Variable | Descripción |
+| --- | --- |
+| `REDIS_URL` | `redis://localhost:6379/0` (Para el redis embebido) |
+| `OPENAI_API_KEY` | Tu llave maestra para todos los clientes |
+| `AI_MODEL` | El modelo por defecto (ej: `gpt-4o`) |
+| `AI_TEMPERATURE` | Nivel de creatividad (ej: `0.7`) |
+| `FIRESTORE_KEY_CONTENT` | (Base64) Para autenticación con Firestore |
 
-Para ver la lista completa de variables requeridas (como `FIRESTORE_PROJECT_ID`), consulta la guía principal: [SETUP_CICD.md](./SETUP_CICD.md).
-
-> **Nota**: La configuración del Agente (Role, Prompt) y **API Keys de LLM** se cargan dinámicamente desde Firestore (`config-ai`), no via variables de entorno.
+> **Nota**: El **System Prompt** (personalidad) se sigue cargando dinámicamente desde Firestore para permitir personalización por cliente, pero la maquinaria de OpenAI ahora es global.
 
 ## Notas
 - Redis corre en el mismo contenedor, por lo que los datos **NO son persistentes** entre reinicios (Cloud Run es stateless). Si necesitas persistencia a largo plazo, usa Redis Enterprise o Cloud Memorystore. Para caché temporal, esta solución es ideal.

@@ -137,19 +137,17 @@ class FirestoreConfigService:
 
         # Ejecutar en paralelo
         # Nota: 'installations' y 'config-secrets' usan domain (tenant_id)
-        # 'config-app', 'config-architect' también usan tenant_id (domain)
         # 'settings/ai' es fijo
+        # 'agents' es query
         
         results = await asyncio.gather(
             fetch_doc(Collections.INSTALLATIONS, domain),
-            fetch_doc(Collections.CONFIG_APP, domain),
-            fetch_doc(Collections.CONFIG_ARCHITECT, domain),
             fetch_doc('settings', 'ai'),
             fetch_doc(Collections.CONFIG_SECRETS, domain),
             fetch_agent()
         )
         
-        install_data, app_data, architect_data, ai_data, secrets_data, agent_payload = results
+        install_data, ai_data, secrets_data, agent_payload = results
 
         if not install_data:
              print(f"⚠️ Installation Data no encontrada en installations/{domain}")
@@ -171,11 +169,10 @@ class FirestoreConfigService:
             }
             print(f"🤖 [Firestore] Agente activo encontrado: {agent_payload.get('name')}")
 
-        # Combinar todo (Prioridad: secrets > agent > ai > architect > app)
+        # Combinar todo (Prioridad: secrets > agent > ai)
+        # Eliminamos config_app y config_architect por optimización (no usados por el bot)
         full_config = {
             "domain": domain,
-            **app_data,
-            **architect_data,
             **ai_data,
             **agent_data,
             **secrets_data
@@ -191,15 +188,14 @@ class FirestoreConfigService:
         """
         Inicia listeners en tiempo real para mantener el caché sincronizado.
         Uses synchronous self._db client which is appropriate for on_snapshot callbacks in background threads.
+        Only listens to essential collections for the bot.
         """
         def on_agent_change(col_snapshot, changes, read_time):
             # No usado actualmente si migramos a config-architect, pero lo mantenemos por compatibilidad
-            for doc in col_snapshot:
-                 # doc.id es domain (tenant identifier)
-                 self._update_cache_background(doc.id)
+            pass
 
         def on_config_change(col_snapshot, changes, read_time):
-            # Genérico para config-app, config-architect donde doc.id == domain
+            # Genérico para colecciones donde doc.id == domain
             for doc in col_snapshot:
                 self._update_cache_background(doc.id)
 
@@ -215,22 +211,17 @@ class FirestoreConfigService:
                     print(f"❌ Error buscando tenants para dominio {domain}: {e}")
 
         # Listeners
-        # NOTE: Sync client also uses .document() usually, but here we are using collection().on_snapshot()
-        # which acts on CollectionReference.
-        # If accessing documents directly, might need to check if .doc() works for sync client.
-        # Based on debug output, it likely needs .document(). 
-        # But here we assume collection(...).on_snapshot is fine.
         
-        # 1. config-app
-        self._db.collection(Collections.CONFIG_APP).on_snapshot(on_config_change)
-        # 2. config-architect
-        self._db.collection(Collections.CONFIG_ARCHITECT).on_snapshot(on_config_change)
-        # 3. config-ai
-        self._db.collection(Collections.CONFIG_AI).on_snapshot(on_config_change)
-        # 4. config-secrets (propaga por domain)
+        # 1. config-secrets (propaga por domain)
         self._db.collection(Collections.CONFIG_SECRETS).on_snapshot(on_secrets_change)
         
-        print("👀 [Firestore] Listeners activos para all config collections.")
+        # 2. settings/ai
+        # Aunque es global, si cambia queremos invalidar (aunque invalidará todos los tenants que lo lean... 
+        # pero como el caché es por tenant, aquí invalidaríamos 'ai' key? 
+        # Más complejo, por ahora omitimos listener global de AI settings para simplificar, 
+        # o lo añadimos si es crítico).
+        
+        print("👀 [Firestore] Listeners activos (Optimized: config-secrets only).")
 
     def _update_cache_background(self, tenant_id: str):
         """Dispara una actualización de caché fuera del hilo del listener."""

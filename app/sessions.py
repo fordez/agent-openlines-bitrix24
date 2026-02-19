@@ -55,7 +55,7 @@ async def get_chat_lock(chat_id: str):
     Compatible con `async with`.
     """
     r = await get_redis()
-    return r.lock(f"lock:chat:{chat_id}", timeout=120, blocking_timeout=60)
+    return r.lock(f"lock:chat:{chat_id}", timeout=600, blocking_timeout=300)
 
 
 async def cleanup_expired_sessions():
@@ -84,63 +84,48 @@ async def create_new_session(chat_id: str) -> AgentSession:
     # Queremos que el bot recuerde lo anterior al re-encenderse por un nuevo mensaje.
     # await clear_chat_history(chat_id) 
     
-    # AI config ahora vive en .env
-    llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
+    # --- CONFIGURACIÓN GLOBAL (Variables de Entorno / GitHub Secrets) ---
+    from app.config import config as ai_config
+    llm_provider = ai_config.LLM_PROVIDER
+    global_model = ai_config.MODEL
+    global_temp = ai_config.TEMPERATURE
+    global_api_key = ai_config.API_KEY
 
-    
-    # Nota: El mcp-agent lee el modelo de mcp_agent.config.yaml, 
-    # pero aquí podemos forzar la lógica de proveedor.
+    # Si no hay key en el entorno, intentamos el loader legacy por si acaso
+    if not global_api_key:
+        global_api_key = get_secret(llm_provider)
 
-    history_seed = await format_history_str(chat_id)
-    
-
-
-    # Nuevo: Cargar configuración desde Firestore (con caché en Redis)
-    from app.prompts import _DEFAULT_SYSTEM_PROMPT
-    
+    # --- CONFIGURACIÓN ESPECÍFICA (Firestore) ---
+    # Traemos el prompt y permitimos sobrescribir modelo/temp si el usuario lo desea en firestore
     fs_service = await get_firestore_config()
-    # Obtenemos el member_id del context var (seteado en main.py) o fallback env
     from app.context_vars import member_id_var
     tenant_id = member_id_var.get() or os.getenv("BITRIX_MEMBER_ID")
     
     config = await fs_service.get_tenant_config(tenant_id) if tenant_id else None
     
+    dynamic_prompt = ""
+    # Configuración de IA fija en el código (vía app.config)
+    ai_model = global_model
+    ai_temp = global_temp
+    
+    # Determinar Prompt desde Firestore (único dato dinámico por cliente)
     if config:
-        # 1. Check for explicit 'systemPrompt' (from config-architect or custom agent field)
-        # This allows the Dashboard to fully control the prompt (overriding the codebase default)
         if config.get('systemPrompt'):
             dynamic_prompt = config.get('systemPrompt')
-            print(f"📜 [Sessions] Usando System Prompt raw desde Firestore para {tenant_id}")
-            
-            # Optional: Si también hay variables de agente activo, las anexamos?
-            # Por ahora, asumimos que si hay systemPrompt, es AUTOSIFICIENTE O INCLUYE VARIABLES.
-            # Pero para soportar "Knowledge" dinámico + "System Prompt" base modificado, podríamos interpolar.
-            # Simple override is safer for now based on user request "todo hay".
-            
-        # 2. Else, build from Active Agent systemPrompt + role
+            print(f"📜 [Sessions] Usando System Prompt desde Firestore para {tenant_id}")
         elif config.get('role'):
-            role = config.get('role', 'Asistente Virtual')
-            
             from app.base_prompt import BASE_SYSTEM_PROMPT
+            role = config.get('role', 'Asistente Virtual')
             dynamic_prompt = f"{BASE_SYSTEM_PROMPT}\n\n# CONFIGURACIÓN ESPECÍFICA DEL AGENTE\nRol: {role}"
-            print(f"🤖 [Sessions] Usando configuración de Agente Activo para {tenant_id}")
-            
-        else:
-            # Fallback to local base
-            from app.prompts import _DEFAULT_SYSTEM_PROMPT
-            dynamic_prompt = _DEFAULT_SYSTEM_PROMPT
-            print(f"⚠️ [Sessions] Config encontrada pero sin prompt/agente. Usando default local.")
-
-        ai_model = config.get('model', os.getenv("AI_MODEL", "gpt-4o"))
-        ai_temp = float(config.get('temperature', os.getenv("AI_TEMPERATURE", "0.2")))
-        print(f"🎨 [Sessions] Modelo aplicado: {ai_model}")
-    else:
+            print(f"🤖 [Sessions] Usando rol de Agente Activo para {tenant_id}")
+    
+    if not dynamic_prompt:
         from app.prompts import get_system_prompt
         dynamic_prompt = await get_system_prompt()
-        ai_model = os.getenv("AI_MODEL", "gpt-4o")
-        ai_temp = float(os.getenv("AI_TEMPERATURE", "0.2"))
-        print(f"⚠️ [Sessions] No se encontró config para {tenant_id}, usando local.")
-    
+        print(f"⚠️ [Sessions] Usando prompt local/default para {tenant_id}")
+
+    # --- ENSAMBLAJE ---
+    history_seed = await format_history_str(chat_id)
     instruction = dynamic_prompt
     if history_seed:
         instruction = f"{dynamic_prompt}\n\n{history_seed}"
@@ -148,7 +133,6 @@ async def create_new_session(chat_id: str) -> AgentSession:
     bot_name = os.getenv("BOT_NAME", "travel_assistant")
     agent_version = os.getenv("AGENT_VERSION", "1.0.0")
 
-    # Propagar tenant_id (env var sigue siendo BITRIX_MEMBER_ID por compatibilidad) al entorno
     if tenant_id:
         os.environ["BITRIX_MEMBER_ID"] = tenant_id
 
@@ -162,50 +146,24 @@ async def create_new_session(chat_id: str) -> AgentSession:
     agent_app = await app_cm.__aenter__()
     await travel_agent.__aenter__()
 
-    # Configurar modelo por defecto en variables de entorno para que MCP Agent lo tome
-    if ai_model:
-        os.environ["OPENAI_DEFAULT_MODEL"] = ai_model
-        # os.environ["GOOGLE_DEFAULT_MODEL"] = ai_model # Google adapter might use different env var or specific kwarg
-
-    
-    # Pass model and temperature via partial to the factory
-    from functools import partial
-    
-    # Resolver API Key
-    api_key = None
-    if config:
-        if config.get("provider"):
-            llm_provider = config.get("provider").lower()
-            print(f"🔄 [Sessions] Provider cambiado por Agente: {llm_provider}")
-
-        # 1. Prioridad: Firestore (tenent-specific override)
-        if llm_provider == "openai" and config.get("openaiApiKey"):
-            api_key = config.get("openaiApiKey")
-        elif llm_provider == "google" and config.get("googleApiKey"):
-            api_key = config.get("googleApiKey")
-    
-    # 2. Fallback: secrets_loader (Environment or secrets.yaml)
-    if not api_key:
-        print("⚠️ [Sessions] API Key no encontrada en config. Intentando secrets_loader...")
-        api_key = get_secret(llm_provider)
+    # Configuración de LLM
+    api_key = global_api_key
 
     if api_key:
         masked_key = f"{api_key[:8]}...{api_key[-4:]}"
-        print(f"🔑 [Sessions] API Key encontrada: {masked_key}")
+        print(f"🔑 [Sessions] Usando API Key GLOBAL: {masked_key}")
         
-        # Poner en environ como fallback para librerías que lo busquen directamente
+        # Poner en environ por compatibilidad
         env_var_name = "OPENAI_API_KEY" if llm_provider == "openai" else "GOOGLE_API_KEY"
         os.environ[env_var_name] = api_key
         
-        # FIX: Algunos wrappers de mcp-agent pueden usar client legacy de OpenAI
-        # Forzar configuración global también por si acaso
         if llm_provider == "openai":
             import openai
             openai.api_key = api_key
-            print("🔧 [Sessions] openai.api_key set globalmente.")
+            os.environ["OPENAI_DEFAULT_MODEL"] = ai_model
 
     else:
-        print("❌ [Sessions] CRITICAL: No se encontró API Key para el proveedor!!")
+        print("❌ [Sessions] CRITICAL: No se encontró API Key GLOBAL!!")
     
     llm_kwargs = {
         "model": ai_model,
