@@ -141,8 +141,14 @@ async def create_new_session(chat_id: str) -> AgentSession:
     travel_agent = Agent(
         name=f"{bot_name}_v{agent_version}_{chat_id}",
         instruction=instruction,
-        server_names=[MCP_SERVER_NAME],
+        server_names=[], # Vaciamos para no buscar subprocesos
     )
+
+    # NUEVO: Registrar herramientas locales (In-Process)
+    from app.bitrix_tools import BITRIX_TOOLS
+    for name, func in BITRIX_TOOLS.items():
+        travel_agent.register_tool(func)
+        print(f"🛠️ [Sessions] Tool registrada localmente: {name}")
 
     # Reusar el AgentApp global (ahora es inmediato)
     from app.context import get_agent_app
