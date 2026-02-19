@@ -16,8 +16,3 @@ mcp:
       command: ./run_mcp_server.sh
       args:
         - mcp_server.py
-    travel_intel:
-      transport: stdio
-      command: ./run_mcp_server.sh
-      args:
-        - mcp_travel_server.py

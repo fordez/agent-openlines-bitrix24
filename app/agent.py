@@ -4,6 +4,14 @@ Coordina la gestión de sesiones, la interacción con el LLM.
 """
 import asyncio
 import traceback
+import sys
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
+
 from app.memory import add_message
 from app.sessions import (
     get_chat_lock, get_session, set_session, 

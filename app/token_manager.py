@@ -8,6 +8,14 @@ import sys
 import httpx
 import json
 from datetime import datetime, timedelta
+import sys
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
+
 from app.auth import update_env_file
 
 class TokenManager:

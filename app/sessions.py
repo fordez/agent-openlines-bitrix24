@@ -7,10 +7,18 @@ import os
 import time
 import asyncio
 from dataclasses import dataclass, field
+import sys
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
+
 from mcp_agent.agents.agent import Agent
 from mcp_agent.workflows.llm.augmented_llm_google import GoogleAugmentedLLM
 from mcp_agent.workflows.llm.augmented_llm_openai import OpenAIAugmentedLLM
-from app.context import app, MCP_SERVER_NAME, TRAVEL_SERVER_NAME
+from app.context import app, MCP_SERVER_NAME
 from app.firestore_config import get_firestore_config
 from app.memory import format_history_str, clear_chat_history
 from app.redis_client import get_redis
@@ -74,7 +82,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
     await clear_chat_history(chat_id)
     
     # AI config ahora vive en .env
-    llm_provider = os.getenv("LLM_PROVIDER", "google").lower()
+    llm_provider = os.getenv("LLM_PROVIDER", "openai").lower()
 
     
     # Nota: El mcp-agent lee el modelo de mcp_agent.config.yaml, 
@@ -143,7 +151,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
     travel_agent = Agent(
         name=f"{bot_name}_v{agent_version}_{chat_id}",
         instruction=instruction,
-        server_names=[MCP_SERVER_NAME, TRAVEL_SERVER_NAME],
+        server_names=[MCP_SERVER_NAME],
     )
 
     app_cm = app.run()

@@ -5,6 +5,13 @@ Guarda los últimos N mensajes por chat_id con TTL automático.
 import json
 from typing import List, Dict
 from app.redis_client import get_redis
+import sys
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
 
 MAX_HISTORY = 10
 HISTORY_TTL = 60 * 60 * 24 * 7  # 7 días

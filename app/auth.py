@@ -5,12 +5,13 @@ Usa httpx.AsyncClient para no bloquear el event loop.
 import os
 import httpx
 import sys
-from dotenv import load_dotenv, set_key
+import os
+import httpx
+import sys
 
-# Cargar variables de entorno usando ruta absoluta para evitar fallos en subprocesos
+# BASE_DIR and ENV_FILE only used for local dev if they exist
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ENV_FILE = os.path.join(BASE_DIR, ".env")
-load_dotenv(ENV_FILE)
 
 # Cliente HTTP compartido (reutiliza conexiones TCP)
 _http_client: httpx.AsyncClient | None = None
@@ -39,8 +40,14 @@ def get_env_var(var_name):
 
 
 def update_env_file(key, value):
-    set_key(ENV_FILE, key, value)
+    """Actualiza la variable en memoria. Si existe archivo .env local, lo actualiza también."""
     os.environ[key] = value
+    if os.path.exists(ENV_FILE):
+        try:
+            from dotenv import set_key
+            set_key(ENV_FILE, key, value)
+        except Exception:
+            pass
 
 
 

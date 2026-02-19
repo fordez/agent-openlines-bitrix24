@@ -1,7 +1,14 @@
 import os
 import json
 import asyncio
+import sys
 import firebase_admin
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
 from firebase_admin import credentials, firestore
 from google.cloud import firestore as google_firestore
 from app.redis_client import get_redis

@@ -3,7 +3,14 @@ Cliente Redis singleton para compartir conexión entre módulos.
 Usa REDIS_URL del entorno o fallback a localhost.
 """
 import os
+import sys
 import redis.asyncio as aioredis
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 

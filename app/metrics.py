@@ -4,6 +4,14 @@ import psutil
 import os
 from datetime import datetime
 from firebase_admin import firestore
+import sys
+
+# Redirect all prints to stderr to avoid breaking MCP protocol
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
+
 from app.firestore_config import get_firestore_config
 
 class MetricsService:

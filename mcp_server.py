@@ -7,22 +7,26 @@ Uso: python mcp_server.py  (se comunica por STDIO con mcp-agent)
 """
 import sys
 import os
-from dotenv import load_dotenv
+import sys
+import os
 
 # Asegurar que el directorio raíz esté en el path
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, base_dir)
 
-# Cargar variables de entorno desde el path absoluto
-dotenv_path = os.path.join(base_dir, ".env")
-load_dotenv(dotenv_path)
+# Override print to use stderr globally for this process
+# This prevents any print() call (including from libraries) from breaking 
+# the MCP JSON-RPC protocol on stdout.
+_print = print
+def print(*args, **kwargs):
+    kwargs.setdefault('file', sys.stderr)
+    _print(*args, **kwargs)
 
 # Debug logs para el subproceso
 sys.stderr.write(f"🔧 MCP Server BaseDir: {base_dir}\n")
-sys.stderr.write(f"🔧 MCP Server .env path: {dotenv_path}\n")
 
 # Mask sensitive values in logs
-redis_url = os.getenv('REDIS_URL')
+redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379/0')
 if redis_url:
     masked_redis = redis_url.split('@')[-1] if '@' in redis_url else '***'
 else:
