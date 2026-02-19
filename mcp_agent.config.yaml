@@ -10,9 +10,4 @@ openai:
   default_model: gpt-4o
 
 mcp:
-  servers:
-    bitrix_crm:
-      transport: stdio
-      command: ./run_mcp_server.sh
-      args:
-        - mcp_server.py
+  servers: {} # Desactivado: Las herramientas ahora son In-Process (locales) para mayor velocidad

@@ -144,11 +144,15 @@ async def create_new_session(chat_id: str) -> AgentSession:
         server_names=[], # Vaciamos para no buscar subprocesos
     )
 
-    # NUEVO: Registrar herramientas locales (In-Process)
-    from app.bitrix_tools import BITRIX_TOOLS
-    for name, func in BITRIX_TOOLS.items():
-        travel_agent.register_tool(func)
-        print(f"🛠️ [Sessions] Tool registrada localmente: {name}")
+    # NUEVO: Integración MCP TOTAL In-Process
+    try:
+        from mcp_server import mcp as bitrix_mcp_server
+        # Registramos el servidor completo directamente en el agente
+        # Esto le da acceso a .tools, .resources y .prompts de forma nativa
+        await travel_agent.use_server(bitrix_mcp_server)
+        print(f"🏛️ [Sessions] MCP Server '{bitrix_mcp_server.name}' vinculado exitosamente (In-Process)")
+    except Exception as e:
+        print(f"⚠️ [Sessions] Error integrando servidor MCP local: {e}")
 
     # Reusar el AgentApp global (ahora es inmediato)
     from app.context import get_agent_app

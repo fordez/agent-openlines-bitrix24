@@ -2,7 +2,7 @@ from mcp_agent.app import MCPApp
 import asyncio
 
 MCP_SERVER_NAME = "bitrix_crm"
-app = MCPApp(name="bot_viajes_agent", server_names=[]) # Sin servidores externos
+app = MCPApp(name="bot_viajes_agent") # Constructor no acepta server_names=[] en esta versión
 
 _agent_app_instance = None
 _app_context_manager = None
