@@ -3,6 +3,7 @@ import json
 import asyncio
 import firebase_admin
 from firebase_admin import credentials, firestore
+from google.cloud import firestore as google_firestore
 from app.redis_client import get_redis
 from app.db_schema import Collections
 
@@ -51,7 +52,17 @@ class FirestoreConfigService:
                 print("⚠️ [Firestore] No explicit credentials found. Using default/anonymous.")
                 firebase_admin.initialize_app()
         
-        self._db = firestore.client()
+        self._db = firestore.client() # Sync client for listeners
+        
+        # Initialize Async Client
+        try:
+             # This will use the same GOOGLE_APPLICATION_CREDENTIALS or default auth
+             self._async_db = google_firestore.AsyncClient()
+             print("✅ [Firestore] AsyncClient initialized successfully.")
+        except Exception as e:
+             print(f"❌ [Firestore] Failed to initialize AsyncClient: {e}")
+             self._async_db = None
+
         self._redis = None
 
     @classmethod
@@ -76,6 +87,10 @@ class FirestoreConfigService:
         5. config-secrets/{domain} -> Bitrix Secrets
         6. agents (query) -> Active Agent
         """
+        if not self._async_db:
+             print("❌ [Firestore] cannot get_tenant_config: AsyncClient not ready.")
+             return {}
+
         cache_key = self._get_cache_key(tenant_id)
         cached = await self._redis.get(cache_key)
         
@@ -88,25 +103,27 @@ class FirestoreConfigService:
 
         # Definir corutinas para fetch en paralelo
         async def fetch_doc(collection, doc_id):
-            doc = await self._db.collection(collection).doc(doc_id).get()
-            return doc.to_dict() if doc.exists else {}
+            try:
+                # Use .document() instead of .doc()
+                doc_ref = self._async_db.collection(collection).document(doc_id)
+                doc = await doc_ref.get()
+                return doc.to_dict() if doc.exists else {}
+            except Exception as e:
+                print(f"❌ Error fetching {collection}/{doc_id}: {e}")
+                return {}
 
         async def fetch_agent():
             try:
-                agents_ref = self._db.collection(Collections.AGENTS)
-                query = agents_ref.where("tenantId", "==", tenant_id).where("isActive", "==", True).limit(1)
-                docs = query.stream()
-                async for doc in docs: # firestore async stream
+                agents_ref = self._async_db.collection(Collections.AGENTS)
+                # Use filter keyword arguments to avoid warnings
+                # And use .stream() which is async generator in AsyncClient
+                query = agents_ref.where(filter=google_firestore.FieldFilter("tenantId", "==", tenant_id))\
+                                  .where(filter=google_firestore.FieldFilter("isActive", "==", True))\
+                                  .limit(1)
+                
+                async for doc in query.stream():
                      return doc.to_dict()
-                # Fallback implementation details might vary depending on lib version, 
-                # but standard sync stream in async context might block. 
-                # Ideally use an async-compatible method if available or run in executor.
-                # For now keeping it simple as 'stream' is often sync generator in python admin sdk.
-                # Let's use a standard get() for a known ID if possible, but here we query.
-                # simpler:
-                docs_list = [d async for d in docs] if hasattr(docs, '__aiter__') else [d for d in docs]
-                if docs_list:
-                    return docs_list[0].to_dict()
+                
             except Exception as e:
                 print(f"⚠️ Error buscando agente activo: {e}")
             return {}
@@ -164,6 +181,7 @@ class FirestoreConfigService:
     def start_listener(self):
         """
         Inicia listeners en tiempo real para mantener el caché sincronizado.
+        Uses synchronous self._db client which is appropriate for on_snapshot callbacks in background threads.
         """
         def on_agent_change(col_snapshot, changes, read_time):
             # No usado actualmente si migramos a config-architect, pero lo mantenemos por compatibilidad
@@ -188,6 +206,12 @@ class FirestoreConfigService:
                     print(f"❌ Error buscando tenants para dominio {domain}: {e}")
 
         # Listeners
+        # NOTE: Sync client also uses .document() usually, but here we are using collection().on_snapshot()
+        # which acts on CollectionReference.
+        # If accessing documents directly, might need to check if .doc() works for sync client.
+        # Based on debug output, it likely needs .document(). 
+        # But here we assume collection(...).on_snapshot is fine.
+        
         # 1. config-app
         self._db.collection(Collections.CONFIG_APP).on_snapshot(on_config_change)
         # 2. config-architect

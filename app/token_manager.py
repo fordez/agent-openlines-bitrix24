@@ -70,7 +70,10 @@ class TokenManager:
         # El member_id YA ES EL DOMINIO en esta arquitectura
         domain = member_id
         
-        doc = fs._db.collection('config-secrets').doc(domain).get()
+        if not fs._async_db:
+            raise ValueError("Firestore AsyncClient not initialized")
+
+        doc = await fs._async_db.collection('config-secrets').document(domain).get()
         
         if doc.exists:
             data = doc.to_dict()
@@ -116,21 +119,28 @@ class TokenManager:
         from app.firestore_config import get_firestore_config
         fs = await get_firestore_config()
 
+        if not fs._async_db:
+             print("❌ [TokenManager] AsyncClient not ready.")
+             return None
+
         # 1. Fetch Installation Data by Domain directly
         # Ahora asumimos que 'member_id' (argumento) ES el dominio
-        doc = fs._db.collection('installations').doc(domain).get()
-        
-        if doc.exists:
-            data = doc.to_dict()
-            if 'accessToken' in data and 'refreshToken' in data:
-                return {
-                    'access_token': data['accessToken'],
-                    'refresh_token': data['refreshToken'],
-                    'expires_at': data.get('expiresAt', 0) / 1000 if data.get('expiresAt', 0) > 10000000000 else data.get('expiresAt', 0),
-                    'domain': data.get('domain', domain)
-                }
-        else:
-            print(f"❌ [TokenManager] No se encontró instalación para el dominio: {domain}")
+        try:
+            doc = await fs._async_db.collection('installations').document(domain).get()
+            
+            if doc.exists:
+                data = doc.to_dict()
+                if 'accessToken' in data and 'refreshToken' in data:
+                    return {
+                        'access_token': data['accessToken'],
+                        'refresh_token': data['refreshToken'],
+                        'expires_at': data.get('expiresAt', 0) / 1000 if data.get('expiresAt', 0) > 10000000000 else data.get('expiresAt', 0),
+                        'domain': data.get('domain', domain)
+                    }
+            else:
+                print(f"❌ [TokenManager] No se encontró instalación para el dominio: {domain}")
+        except Exception as e:
+            print(f"❌ [TokenManager] Error fetching from firestore: {e}")
             
         return None
 
@@ -188,14 +198,14 @@ class TokenManager:
         # Sincronizar Firestore
         from app.firestore_config import get_firestore_config
         fs = await get_firestore_config()
-        fs._db.collection('installations').doc(member_id).update({
-            'accessToken': new_tokens['access_token'],
-            'refreshToken': new_tokens['refresh_token'],
-            'expiresAt': int(new_tokens['expires_at'] * 1000) # Dashboard suele usar ms
-        })
+        if fs._async_db:
+            await fs._async_db.collection('installations').document(member_id).update({
+                'accessToken': new_tokens['access_token'],
+                'refreshToken': new_tokens['refresh_token'],
+                'expiresAt': int(new_tokens['expires_at'] * 1000) # Dashboard suele usar ms
+            })
         
         return new_tokens['access_token']
-
 async def get_token_manager() -> TokenManager:
     global _token_manager
     if globals().get("_token_manager") is None:
