@@ -139,6 +139,8 @@ async def get_response(user_message: str, chat_id: str, event_token: str = None,
             await remove_session(chat_id)
             try:
                 await session.agent.__aexit__(None, None, None)
+                if session.app_context_manager:
+                    await session.app_context_manager.__aexit__(None, None, None)
             except Exception:
                 pass
 

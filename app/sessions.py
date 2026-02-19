@@ -24,6 +24,7 @@ class AgentSession:
     agent: Agent
     llm: object
     agent_app: object
+    app_context_manager: object  # Store the CM to prevent GC and allow proper close
     created_at: float = field(default_factory=time.time)
     last_used: float = field(default_factory=time.time)
 
@@ -57,6 +58,9 @@ async def cleanup_expired_sessions():
             if session:
                 try:
                     await session.agent.__aexit__(None, None, None)
+                    if session.app_context_manager:
+                        await session.app_context_manager.__aexit__(None, None, None)
+                    
                     # Limpiar Redis al terminar sesión (según requerimiento user)
                     await clear_chat_history(cid)
                 except Exception as e:
@@ -142,7 +146,8 @@ async def create_new_session(chat_id: str) -> AgentSession:
         server_names=[MCP_SERVER_NAME, TRAVEL_SERVER_NAME],
     )
 
-    agent_app = await app.run().__aenter__()
+    app_cm = app.run()
+    agent_app = await app_cm.__aenter__()
     await travel_agent.__aenter__()
 
     # Configurar modelo por defecto en variables de entorno para que MCP Agent lo tome
@@ -182,6 +187,7 @@ async def create_new_session(chat_id: str) -> AgentSession:
         agent=travel_agent,
         llm=llm,
         agent_app=agent_app,
+        app_context_manager=app_cm,
     )
 
     print(f"  🆕 Nueva sesión creada para chat {chat_id} (provider: {llm_provider})")
