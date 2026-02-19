@@ -14,6 +14,17 @@ import os
 base_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, base_dir)
 
+# Cargar variables de entorno solo si existe el archivo (local dev)
+# En producción (Cloud Run), las variables se inyectan directamente al entorno.
+env_file = os.path.join(base_dir, ".env")
+if os.path.exists(env_file):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_file)
+        sys.stderr.write("📁 .env cargado para desarrollo local (subproceso)\n")
+    except Exception:
+        pass
+
 # Override print to use stderr globally for this process
 # This prevents any print() call (including from libraries) from breaking 
 # the MCP JSON-RPC protocol on stdout.

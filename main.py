@@ -15,6 +15,17 @@ mcp.client.stdio.get_default_environment = _get_all_env
 print("🔧 Monkeypatched mcp.client.stdio.get_default_environment to pass all env vars.")
 # --- MONKEYPATCH END ---
 
+# Cargar variables de entorno solo si existe el archivo (local dev)
+# En producción (Cloud Run), las variables se inyectan directamente al entorno.
+env_file = ".env"
+if os.path.exists(env_file):
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(env_file)
+        print("📁 .env cargado para desarrollo local")
+    except Exception:
+        pass
+
 from fastapi import FastAPI, Request
 import uvicorn
 import asyncio
