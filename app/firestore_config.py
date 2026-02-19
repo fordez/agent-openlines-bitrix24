@@ -80,25 +80,23 @@ class FirestoreConfigService:
             cls._instance._redis = await get_redis()
         return cls._instance
 
-    def _get_cache_key(self, tenant_id: str) -> str:
+    def _get_cache_key(self, tenant_id: str, bot_id: str = None) -> str:
+        if bot_id:
+            return f"config:tenant:{tenant_id}:bot:{bot_id}"
         return f"config:tenant:{tenant_id}"
 
-    async def get_tenant_config(self, tenant_id: str) -> dict:
+    async def get_tenant_config(self, tenant_id: str, bot_id: str = None) -> dict:
         """
-        Obtiene la configuración completa de un tenant.
-        Busca en Redis primero, luego unifica datos de Firestore en PARALELO:
+        Obtiene la configuración completa de un tenant/bot.
         1. installations/{tenant_id} -> para obtener el DOMINIO
-        2. config-app/{domain} -> UI settings
-        3. config-architect/{tenant_id} -> Personality
-        4. settings/ai -> Global AI Config
-        5. config-secrets/{domain} -> Bitrix Secrets
-        6. agents (query) -> Active Agent
+        2. settings/ai -> Global AI Config
+        3. agents (query) -> Active Agent (filtrado por tenantId y opcionalmente botId)
         """
         if not self._async_db:
              print("❌ [Firestore] cannot get_tenant_config: AsyncClient not ready.")
              return {}
 
-        cache_key = self._get_cache_key(tenant_id)
+        cache_key = self._get_cache_key(tenant_id, bot_id)
         cached = await self._redis.get(cache_key)
         
         if cached:
@@ -122,11 +120,14 @@ class FirestoreConfigService:
         async def fetch_agent():
             try:
                 agents_ref = self._async_db.collection(Collections.AGENTS)
-                # Use filter keyword arguments to avoid warnings
-                # And use .stream() which is async generator in AsyncClient
                 query = agents_ref.where(filter=google_firestore.FieldFilter("tenantId", "==", tenant_id))\
-                                  .where(filter=google_firestore.FieldFilter("isActive", "==", True))\
-                                  .limit(1)
+                                  .where(filter=google_firestore.FieldFilter("isActive", "==", True))
+                
+                # Opcional: Filtrar por botId específico si lo tenemos
+                if bot_id:
+                     query = query.where(filter=google_firestore.FieldFilter("botId", "==", str(bot_id)))
+
+                query = query.limit(1)
                 
                 async for doc in query.stream():
                      return doc.to_dict()
@@ -135,10 +136,8 @@ class FirestoreConfigService:
                 print(f"⚠️ Error buscando agente activo: {e}")
             return {}
 
-        # Ejecutar en paralelo
-        # Nota: 'installations' y 'config-secrets' usan domain (tenant_id)
-        # 'settings/ai' es fijo
-        # 'agents' es query
+        start_time = asyncio.get_event_loop().time()
+        print(f"📡 [Firestore] Iniciando carga paralela de documentos para {tenant_id}...")
         
         results = await asyncio.gather(
             fetch_doc(Collections.INSTALLATIONS, domain),
@@ -146,6 +145,9 @@ class FirestoreConfigService:
             fetch_doc(Collections.CONFIG_SECRETS, domain),
             fetch_agent()
         )
+        
+        end_time = asyncio.get_event_loop().time()
+        print(f"⏱️ [Firestore] Carga completada en {end_time - start_time:.3f}s")
         
         install_data, ai_data, secrets_data, agent_payload = results
 
@@ -186,42 +188,28 @@ class FirestoreConfigService:
 
     def start_listener(self):
         """
-        Inicia listeners en tiempo real para mantener el caché sincronizado.
-        Uses synchronous self._db client which is appropriate for on_snapshot callbacks in background threads.
-        Only listens to essential collections for the bot.
+        Inicia listeners en tiempo real en segundo plano.
         """
-        def on_agent_change(col_snapshot, changes, read_time):
-            # No usado actualmente si migramos a config-architect, pero lo mantenemos por compatibilidad
-            pass
+        try:
+            # 1. config-secrets (propaga por domain)
+            self._db.collection(Collections.CONFIG_SECRETS).on_snapshot(self._on_secrets_change)
+            print("👀 [Firestore] Listeners activos (Optimized: config-secrets only).")
+        except Exception as e:
+            print(f"⚠️ No se pudieron activar los listeners de Firestore: {e}")
 
-        def on_config_change(col_snapshot, changes, read_time):
-            # Genérico para colecciones donde doc.id == domain
-            for doc in col_snapshot:
-                self._update_cache_background(doc.id)
+    def _on_secrets_change(self, doc_snapshot, changes, read_time):
+        for doc in doc_snapshot:
+            domain = doc.id
+            print(f"♻️ [Firestore] Secretos cambiaron para dominio {domain}.")
+            self._update_cache_background(domain)
 
-        def on_secrets_change(doc_snapshot, changes, read_time):
-            # Para config-secrets, el doc ID es el DOMINIO.
-            for doc in doc_snapshot:
-                domain = doc.id
-                print(f"♻️ [Firestore] Secretos cambiaron para dominio {domain}.")
-                try:
-                    # Invalidar caché directamente por dominio (que es el tenant_id)
-                    self._update_cache_background(domain)
-                except Exception as e:
-                    print(f"❌ Error buscando tenants para dominio {domain}: {e}")
-
-        # Listeners
-        
-        # 1. config-secrets (propaga por domain)
-        self._db.collection(Collections.CONFIG_SECRETS).on_snapshot(on_secrets_change)
-        
-        # 2. settings/ai
-        # Aunque es global, si cambia queremos invalidar (aunque invalidará todos los tenants que lo lean... 
-        # pero como el caché es por tenant, aquí invalidaríamos 'ai' key? 
-        # Más complejo, por ahora omitimos listener global de AI settings para simplificar, 
-        # o lo añadimos si es crítico).
-        
-        print("👀 [Firestore] Listeners activos (Optimized: config-secrets only).")
+    async def warmup(self):
+        """Pre-carga datos globales para evitar lag en el primer mensaje."""
+        try:
+            await self.get_tenant_config("warmup_test")
+            print("🔥 [Firestore] Warmup completado.")
+        except:
+             pass
 
     def _update_cache_background(self, tenant_id: str):
         """Dispara una actualización de caché fuera del hilo del listener."""

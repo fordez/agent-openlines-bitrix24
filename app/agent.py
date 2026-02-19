@@ -29,9 +29,6 @@ async def get_response(user_message: str, chat_id: str, event_token: str = None,
     if event_token and client_endpoint:
         asyncio.create_task(send_typing_indicator(event_token, client_endpoint, chat_id, "on"))
 
-    # Limpiar sesiones expiradas periódicamente (no bloquea otros chats)
-    asyncio.create_task(_safe_cleanup())
-
     # Obtener lock específico para este chat
     chat_lock = await get_chat_lock(chat_id)
 

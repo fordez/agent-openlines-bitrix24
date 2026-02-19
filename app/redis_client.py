@@ -4,6 +4,8 @@ Usa REDIS_URL del entorno o fallback a localhost.
 """
 import os
 import sys
+import asyncio
+import time
 import redis.asyncio as aioredis
 
 # Redirect all prints to stderr to avoid breaking MCP protocol
@@ -29,22 +31,32 @@ class MockRedis:
     async def aclose(self):
         pass
 
+from datetime import datetime
+
+def log(msg: str):
+    now = datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{now}] {msg}")
+
 async def get_redis() -> aioredis.Redis:
-    """Retorna el cliente Redis singleton con fallback a MockRedis."""
+    """Retorna el cliente Redis singleton con socket timeout para evitar bloqueos."""
     global _redis_client
     if _redis_client is None:
         try:
+            log(f"🔗 Intentando conectar a Redis: {REDIS_URL}")
             client = aioredis.from_url(
                 REDIS_URL,
                 decode_responses=True,
                 max_connections=20,
+                socket_timeout=2.0,
+                socket_connect_timeout=2.0,
+                retry_on_timeout=False
             )
-            # Verificar conexión rápida
-            await client.ping()
+            # Verificar conexión con timeout real
+            await asyncio.wait_for(client.ping(), timeout=2.5)
             _redis_client = client
-            print("  ✅ Conectado a Redis Real")
+            log("✅ Conexión a Redis exitosa")
         except Exception as e:
-            print(f"  ⚠️ Redis no disponible ({e}). Usando MockRedis.")
+            log(f"⚠️ Redis no disponible ({type(e).__name__}: {e}). Usando MockRedis.")
             _redis_client = MockRedis()
     return _redis_client
 

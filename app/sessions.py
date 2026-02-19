@@ -33,7 +33,6 @@ class AgentSession:
     agent: Agent
     llm: object
     agent_app: object
-    app_context_manager: object  # Store the CM to prevent GC and allow proper close
     created_at: float = field(default_factory=time.time)
     last_used: float = field(default_factory=time.time)
 
@@ -101,7 +100,10 @@ async def create_new_session(chat_id: str) -> AgentSession:
     from app.context_vars import member_id_var
     tenant_id = member_id_var.get() or os.getenv("BITRIX_MEMBER_ID")
     
-    config = await fs_service.get_tenant_config(tenant_id) if tenant_id else None
+    # Nuevo: Extraer bot_id para filtrar correctamente en Firestore (si hay múltiples bots por portal)
+    bot_id = os.getenv("BITRIX_BOT_ID") 
+    
+    config = await fs_service.get_tenant_config(tenant_id, bot_id=bot_id) if tenant_id else None
     
     dynamic_prompt = ""
     # Configuración de IA fija en el código (vía app.config)
@@ -142,8 +144,11 @@ async def create_new_session(chat_id: str) -> AgentSession:
         server_names=[MCP_SERVER_NAME],
     )
 
-    app_cm = app.run()
-    agent_app = await app_cm.__aenter__()
+    # Reusar el AgentApp global (ahora es inmediato)
+    from app.context import get_agent_app
+    agent_app = await get_agent_app()
+    
+    # El Agent sí debe entrar en su contexto para inicializarse
     await travel_agent.__aenter__()
 
     # Configuración de LLM
@@ -184,7 +189,6 @@ async def create_new_session(chat_id: str) -> AgentSession:
         agent=travel_agent,
         llm=llm,
         agent_app=agent_app,
-        app_context_manager=app_cm,
     )
 
     print(f"  🆕 Nueva sesión creada para chat {chat_id} (provider: {llm_provider})")

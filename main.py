@@ -43,23 +43,50 @@ async def startup():
     from app.firestore_config import get_firestore_config
     from app.metrics import MetricsService
     
-    # Init tokens
-    await get_token_manager()
-    print("🚀 TokenManager inicializado")
+    # 1. Init Redis (Esencial para todo)
+    from app.redis_client import get_redis
+    await get_redis()
     
-    # Init Config
+    # 2. Init Tokens
+    await get_token_manager()
+    print("🚀 [Startup] TokenManager listo")
+    
+    # 3. Init Config & Firestore
     from app.config import config
     config.print_summary()
-    
-    # Init Firestore and Start Listener
     fs = await get_firestore_config()
     fs.start_listener()
-    print("🚀 Firestore Listeners activos")
-
+    await fs.warmup()
+    
+    # 4. Init MCP AgentApp Global (El motor de la IA)
+    from app.context import get_agent_app
+    await get_agent_app()
+    
+    # 5. Background Tasks
+    asyncio.create_task(_global_session_cleanup_loop())
+    
     # Start System Metrics
     metrics = await MetricsService.get_instance()
     await metrics.start_system_metrics_logger()
-    print("📊 System Metrics Logger iniciado")
+    print("✨ [SYSTEM READY] Bot totalmente cargado y pre-calentado.")
+
+async def _global_session_cleanup_loop():
+    """Limpia sesiones expiradas cada 5 minutos en segundo plano."""
+    from app.sessions import cleanup_expired_sessions
+    while True:
+        await asyncio.sleep(300) # 5 min
+        try:
+            await cleanup_expired_sessions()
+        except Exception as e:
+            print(f"⚠️ Error en limpieza global: {e}")
+
+
+@server.on_event("shutdown")
+async def shutdown():
+    """Cierra servicios al apagar."""
+    from app.context import close_agent_app
+    await close_agent_app()
+    print("🛑 Aplicación cerrada correctamente")
 
 
 @server.get("/")
@@ -166,6 +193,9 @@ async def handle_message(data: dict):
     # Usar DOMAIN como identificador del tenant (no member_id)
     if domain:
         os.environ["BITRIX_MEMBER_ID"] = domain  # Legacy env var, ahora contiene domain
+        if extracted.get("BOT_ID"):
+             os.environ["BITRIX_BOT_ID"] = str(extracted.get("BOT_ID"))
+             
         from app.context_vars import member_id_var
         member_id_var.set(domain)  # Context var ahora usa domain
         
@@ -176,8 +206,8 @@ async def handle_message(data: dict):
             await r.set(f"map:chat_to_member:{chat_id}", domain, ex=3600*24)
 
     # Consultar LLM (tools usan TokenManager internamente)
-    provider = os.getenv("LLM_PROVIDER", "unknown")
-    print(f"  🤖 Consultando AI ({provider})...")
+    from app.config import config as ai_config
+    print(f"  🤖 Consultando AI ({ai_config.LLM_PROVIDER})...")
     ai_response = await agent.get_response(
         message, 
         dialog_id, 
