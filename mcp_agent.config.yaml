@@ -13,11 +13,11 @@ mcp:
   servers:
     bitrix_crm:
       transport: stdio
-      command: python
+      command: ./run_mcp_server.sh
       args:
         - mcp_server.py
     travel_intel:
       transport: stdio
-      command: python
+      command: ./run_mcp_server.sh
       args:
         - mcp_travel_server.py

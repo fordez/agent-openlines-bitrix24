@@ -3,6 +3,18 @@ Bot Viajes — Webhook de Bitrix24 con agente AI (Gemini via mcp-agent).
 Punto de entrada principal del servidor FastAPI.
 Usa fire-and-forget para no bloquear al recibir eventos concurrentes.
 """
+# --- MONKEYPATCH START ---
+# Fix: mcp-agent filters env vars by default. We need to pass ALL env vars (Cloud Run injection).
+import os
+import mcp.client.stdio
+
+def _get_all_env() -> dict[str, str]:
+    return os.environ.copy()
+
+mcp.client.stdio.get_default_environment = _get_all_env
+print("🔧 Monkeypatched mcp.client.stdio.get_default_environment to pass all env vars.")
+# --- MONKEYPATCH END ---
+
 from fastapi import FastAPI, Request
 import uvicorn
 import asyncio

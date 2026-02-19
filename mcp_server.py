@@ -20,7 +20,14 @@ load_dotenv(dotenv_path)
 # Debug logs para el subproceso
 sys.stderr.write(f"🔧 MCP Server BaseDir: {base_dir}\n")
 sys.stderr.write(f"🔧 MCP Server .env path: {dotenv_path}\n")
-sys.stderr.write(f"🔧 MCP Server REDIS_URL: {os.getenv('REDIS_URL')}\n")
+
+# Mask sensitive values in logs
+redis_url = os.getenv('REDIS_URL')
+if redis_url:
+    masked_redis = redis_url.split('@')[-1] if '@' in redis_url else '***'
+else:
+    masked_redis = 'None'
+sys.stderr.write(f"🔧 MCP Server REDIS_URL: {masked_redis}\n")
 sys.stderr.write(f"🔧 MCP Server BITRIX_DOMAIN: {os.getenv('BITRIX_DOMAIN')}\n")
 
 from mcp.server.fastmcp import FastMCP
